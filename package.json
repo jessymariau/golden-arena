@@ -1,0 +1,16 @@
+{
+  "name": "golden-arena",
+  "version": "1.0.0",
+  "description": "AI models play Split or Steal against each other. Watch who cooperates, who lies, who wins.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

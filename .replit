@@ -1,0 +1,12 @@
+run = "npm start"
+entrypoint = "server.js"
+
+[env]
+XDG_CONFIG_HOME = "/home/runner/.config"
+
+[nix]
+channel = "stable-24_05"
+
+[[ports]]
+localPort = 3000
+externalPort = 80
