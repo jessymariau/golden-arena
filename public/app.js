@@ -283,10 +283,10 @@ function potRowHtml(gameId) {
 /* Every receipt is an IMPRESSION: number · plate · edition · date.
    Nº {last 4 of match id} — the archive's catalogue line. */
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-function impressionHtml(matchId, gameId) {
-  const d = new Date();
+function impressionHtml(matchId, gameId, at, live) {
+  const d = at ? new Date(at) : new Date();
   const date = String(d.getDate()).padStart(2, "0") + " " + MONTHS[d.getMonth()] + " " + d.getFullYear();
-  const edition = (CONFIG && CONFIG.liveMode) || storedKey() ? "Live table" : "Demo table";
+  const edition = (live === undefined ? (CONFIG && CONFIG.liveMode) || storedKey() : live) ? "Live table" : "Demo table";
   const id = String(matchId || "").slice(-4).toUpperCase();
   return '<div class="impression">' +
     '<span class="imp-no">Nº ' + esc(id || "————") + "</span>" +
@@ -558,7 +558,8 @@ function route() {
   setNav(path);
   /* every view but a live match belongs to the archive */
   if (path !== "/play") setRegister(false);
-  if (path === "/play") renderPlay(params);
+  if (path.indexOf("/receipt/") === 0) renderReceipt(path.slice("/receipt/".length));
+  else if (path === "/play") renderPlay(params);
   else if (path === "/watch") renderWatch(params);
   else if (path === "/board") renderBoard();
   else if (path === "/rules") renderRules(params);
@@ -779,6 +780,7 @@ const playState = {
   inFlight: false,
   opToken: 0,              /* staleness guard: bumping it orphans in-flight match requests */
   dockVal: null,           /* slider position between renders */
+  seenLines: null,         /* lines already painted; null = this match has not been painted yet */
   revealAnimated: false,
   refetchTimer: null,
   refetchN: 0,
@@ -936,6 +938,7 @@ async function enterArena() {
     s.stage = "match";
     s.lastSetup = body;
     s.dockVal = null;
+    s.seenLines = null;
     s.revealAnimated = false;
     s.refetchN = 0;
   } catch (err) {
@@ -1042,15 +1045,30 @@ function sidePowersHtml(who, powers) {
 
 function transcriptHtml(st, s) {
   const oppLabel = st.players && st.players[1] ? st.players[1].label : "Opponent";
-  let html = (st.transcript || []).map((t) => {
+  /* Lines that are new SINCE THE LAST RENDER come in one after another, at
+     about the pace you would read them. Everything already on screen stays
+     put: re-animating the whole transcript on every poll would be a fresh
+     wall of text every 1.2 seconds. */
+  /* null means this match has not been painted yet, which is NOT the same as
+     having seen zero lines: Split or Steal opens on an empty transcript, and
+     treating that as "nothing seen" left its first two lines unmarked. */
+  const all = st.transcript || [];
+  const first = s.seenLines === null || s.seenLines === undefined;
+  const seen = first ? all.length : s.seenLines;
+  let arriving = 0;
+  let html = all.map((t, i) => {
+    const fresh = !first && i >= seen;
+    const attr = fresh ? ' style="--in:' + arriving++ + '"' : "";
+    const cls = fresh ? " is-arriving" : "";
     if (t.seat === -1 || t.event) {
-      return '<div class="divider"><span>' + esc(t.text) + "</span></div>";
+      return '<div class="divider' + cls + '"' + attr + "><span>" + esc(t.text) + "</span></div>";
     }
     if (t.seat === 0) {
-      return '<div class="bubble bubble-you"><span class="bubble-who">You</span>' + esc(t.text) + "</div>";
+      return '<div class="bubble bubble-you' + cls + '"' + attr + '><span class="bubble-who">You</span>' + esc(t.text) + "</div>";
     }
-    return '<div class="bubble bubble-opp"><span class="bubble-who">' + esc(oppLabel) + "</span>" + esc(t.text) + "</div>";
+    return '<div class="bubble bubble-opp' + cls + '"' + attr + '><span class="bubble-who">' + esc(oppLabel) + "</span>" + esc(t.text) + "</div>";
   }).join("");
+  s.seenLines = all.length;
   /* Once the hands are down the showdown is the state; a thinking chip under
      it would be describing a moment that has already passed. */
   const aiBusy = !s.show && (s.inFlight || (!st.done && (!st.waitingFor || st.waitingFor.seat !== 0)));
@@ -1119,7 +1137,7 @@ function prisonersDock(st, d, dis) {
   const total = d.totalRounds || 5;
   const round = d.round || st.round || 1;
   return '<div class="dock card" aria-live="polite">' +
-    pipsHtml(d.history || [], round, total) +
+    ledgerHtml(st, round) +
     leakHtml(st, d) +
     '<p class="dock-note">Round ' + round + " of " + total + ". Choose in secret.</p>" +
     payoffsHtml(st.game) +
@@ -1129,26 +1147,57 @@ function prisonersDock(st, d, dis) {
     "</div></div>";
 }
 
-function pipsHtml(history, round, total) {
-  let out = '<div class="pips" aria-label="Round history">';
-  for (let i = 1; i <= total; i++) {
-    const h = history[i - 1];
-    if (h && h.decisions) {
-      const a = (h.decisions[0] || {}).decision || "?";
-      const b = (h.decisions[1] || {}).decision || "?";
-      out += '<span class="pip pip-done" title="Round ' + i + " — you " + esc(a) + ", them " + esc(b) + '">' +
-        '<span class="pip-r">R' + i + '</span><span class="pip-pair">' +
-        '<i class="' + (a === "COOPERATE" ? "pc" : "pd") + '"></i>' +
-        '<i class="' + (b === "COOPERATE" ? "pc" : "pd") + '"></i></span></span>';
-    } else if (i === round) {
-      out += '<span class="pip pip-now" title="Round ' + i + ' — deciding now"><span class="pip-r">R' + i + '</span><span class="pip-pair"><i class="pq"></i><i class="pq"></i></span></span>';
-    } else {
-      out += '<span class="pip" title="Round ' + i + '"><span class="pip-r">R' + i + '</span><span class="pip-pair"><i></i><i></i></span></span>';
-    }
-  }
-  return out + "</div>";
-}
+/* The ledger. Five rounds is a relationship, not a list: you need to see the
+   running total to know who is winning, and you need to see a defection that
+   ANSWERS a defection, because that is the difference between a strategy and
+   a grudge. Both are read straight out of the round log, never inferred. */
+function ledgerHtml(st, round) {
+  const rounds = st.rounds || [];
+  const them = (st.players && st.players[1] ? st.players[1].label : "Them");
+  let mine = 0, theirs = 0;
+  let body = "";
 
+  for (let i = 0; i < PD_ROUNDS; i++) {
+    const r = rounds[i];
+    if (!r) {
+      const now = i + 1 === round;
+      body += '<tr class="lg-row' + (now ? " lg-now" : " lg-todo") + '"><th scope="row">R' + (i + 1) + "</th>" +
+        '<td colspan="4">' + (now ? "deciding" : "") + "</td></tr>";
+      continue;
+    }
+    const w = [0, 1].map((k) => (r.decisions[k] || {}).decision || "?");
+    /* A grudge is a TURN, not a habit. Marking every defection that merely
+       follows one would decorate a player who defects unconditionally, and a
+       mark that can be wrong is worth less than no mark. This one requires
+       them to have been cooperating right up until they were crossed. */
+    const prev = rounds[i - 1];
+    const grudge = [0, 1].map((k) => Boolean(
+      prev && w[k] === "DEFECT" &&
+      (prev.decisions[k] || {}).decision === "COOPERATE" &&
+      (prev.decisions[1 - k] || {}).decision === "DEFECT"));
+    mine += Number(r.payoffs[0]) || 0;
+    theirs += Number(r.payoffs[1]) || 0;
+
+    body += '<tr class="lg-row"><th scope="row">R' + (i + 1) + "</th>" +
+      [0, 1].map((k) =>
+        '<td class="lg-move ' + (w[k] === "DEFECT" ? "lg-defect" : "lg-coop") + '">' + esc(w[k].toLowerCase()) +
+        (grudge[k] ? '<abbr class="lg-grudge" title="was cooperating until the round before, then answered a defection with one">&#8617;</abbr>' : "") + "</td>").join("") +
+      '<td class="lg-cash">' + money(r.payoffs[0]) + "</td>" +
+      '<td class="lg-cash">' + money(r.payoffs[1]) + "</td></tr>";
+  }
+
+  return '<table class="ledger"><caption class="lg-cap">' + (round ? "The rounds so far" : "The rounds") + "</caption>" +
+    '<thead><tr class="lg-head-group"><td></td>' +
+      '<th scope="colgroup" colspan="2">Chose</th>' +
+      '<th scope="colgroup" colspan="2" class="lg-cash">Paid</th></tr>' +
+    "<tr><td></td>" +
+      '<th scope="col">You</th><th scope="col">' + esc(them) + "</th>" +
+      '<th scope="col" class="lg-cash">You</th><th scope="col" class="lg-cash">' + esc(them) + "</th></tr></thead>" +
+    "<tbody>" + body + "</tbody>" +
+    '<tfoot><tr><th scope="row">Total</th><td colspan="2"></td>' +
+      '<td class="lg-cash">' + money(mine) + '</td><td class="lg-cash">' + money(theirs) + "</td></tr></tfoot>" +
+    "</table>";
+}
 function offerDock(d, dis, s) {
   const max = Number.isFinite(d.max) ? d.max : 100;
   const cur = s.dockVal != null ? s.dockVal : Math.round(max / 2);
@@ -1234,6 +1283,23 @@ function returnReadout(v, sent, pot) {
   return "Send back <b>" + money(v) + "</b> of " + money(pot) + whole;
 }
 
+/* The permalink the server serves at /r/:id, which is also what unfurls on X
+   and LinkedIn. Absolute, because it is going into somebody's clipboard. */
+function receiptUrl(id) { return location.origin + "/r/" + encodeURIComponent(id); }
+
+async function copyReceiptLink(id) {
+  if (!id) return;
+  const url = receiptUrl(id);
+  try {
+    await navigator.clipboard.writeText(url);
+    toast("Link copied. It unfurls with the stamp on it.", "ok");
+  } catch (e) {
+    /* the clipboard is blocked on insecure origins and inside some embeds;
+       showing the address is still better than a dead button */
+    toast(url, "ok");
+  }
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    THE SHOWDOWN
    The one place in this app allowed to take its time. Everything else is
@@ -1247,7 +1313,8 @@ function returnReadout(v, sent, pot) {
    Click anywhere to skip it.
    ═══════════════════════════════════════════════════════════════════════ */
 const SHOW = { lock: 950, flip: 560, read: 820, pay: 760 };
-const SHOWDOWN_GAMES = { splitsteal: true };
+const SHOWDOWN_GAMES = { splitsteal: true, prisoners: true };
+const PD_ROUNDS = 5;
 
 const wait = (ms) => new Promise((r) => setTimeout(r, Math.max(0, ms)));
 const TAKING = /STEAL|DEFECT|REJECT/i;
@@ -1259,12 +1326,35 @@ function monogramOf(label) {
   return (seat ? seat[1] : String(label || "?").trim().charAt(0)).toUpperCase();
 }
 
-function showdownOutcome(words) {
-  const took = words.map((w) => TAKING.test(w || ""));
-  if (took[0] && took[1]) return "burned";
-  if (took[0]) return "took-0";
-  if (took[1]) return "took-1";
-  return "shared";
+/* Split or Steal turns over once, at the end. Prisoner's Dilemma turns over
+   every round, so it reads its hands from the round that just resolved. */
+function showdownData(st) {
+  if (st.game === "prisoners") {
+    const rounds = st.rounds || [];
+    const r = rounds[rounds.length - 1] || { decisions: [], payoffs: [0, 0] };
+    return {
+      words: [0, 1].map((i) => (r.decisions[i] || {}).decision || ""),
+      payoffs: r.payoffs || [0, 0],
+      label: "round",
+      figure: rounds.length + " of " + PD_ROUNDS,
+    };
+  }
+  const rp = ((st.result || {}).receipt || {}).players || [];
+  return {
+    words: [0, 1].map((i) => (rp[i] && rp[i].words && rp[i].words[0]) || ""),
+    payoffs: (st.result || {}).payoffs || [0, 0],
+    label: "the pot",
+    figure: money(100),
+  };
+}
+
+/* Read from the money, not the words: a pot that pays nobody has burned,
+   whatever the two of them called it. */
+function showdownOutcome(payoffs) {
+  const [a, b] = payoffs;
+  if (!a && !b) return "burned";
+  if (a === b) return "shared";
+  return a > b ? "took-0" : "took-1";
 }
 
 function handHtml(side, label, word) {
@@ -1280,26 +1370,29 @@ function handHtml(side, label, word) {
 
 function showdownHtml(st, s) {
   const show = s.show;
-  const rp = ((st.result && st.result.receipt) || {}).players || [];
-  const words = [0, 1].map((i) => (rp[i] && rp[i].words && rp[i].words[0]) || "");
-  const payoffs = (st.result && st.result.payoffs) || [0, 0];
+  const d = showdownData(st);
   const opp = st.players[1] || { label: "Them" };
 
-  return '<section class="showdown" data-phase="' + esc(show.phase) + '" data-outcome="' + showdownOutcome(words) + '" data-action="skip-showdown">' +
+  return '<section class="showdown" data-phase="' + esc(show.phase) + '" data-outcome="' + showdownOutcome(d.payoffs) + '" data-action="skip-showdown">' +
     '<div class="showdown-table">' +
-      handHtml("you", "You", words[0]) +
+      handHtml("you", "You", d.words[0]) +
       '<div class="pot" aria-hidden="true">' +
-        '<span class="pot-label">the pot</span>' +
-        '<span class="pot-figure">' + money(100) + "</span>" +
-        '<span class="pot-slip pot-slip-l' + (payoffs[0] ? "" : " is-nil") + '">' + money(payoffs[0]) + "</span>" +
-        '<span class="pot-slip pot-slip-r' + (payoffs[1] ? "" : " is-nil") + '">' + money(payoffs[1]) + "</span>" +
+        '<span class="pot-label">' + esc(d.label) + "</span>" +
+        '<span class="pot-figure">' + esc(d.figure) + "</span>" +
+        slipHtml("l", d.payoffs[0], d.words[0]) + slipHtml("r", d.payoffs[1], d.words[1]) +
         '<span class="pot-strike"></span>' +
       "</div>" +
-      handHtml("them", opp.label, words[1]) +
+      handHtml("them", opp.label, d.words[1]) +
     "</div>" +
     '<p class="showdown-line" role="status">' +
       esc(show.phase === "lock" ? (show.landed ? "Turning them over." : "Locked. Waiting on them.") : "") +
     "</p></section>";
+}
+
+function slipHtml(side, payoff, word) {
+  return '<span class="pot-slip pot-slip-' + side +
+    (payoff ? "" : " is-nil") + (TAKING.test(word || "") ? " slip-bad" : " slip-good") +
+    '">' + money(payoff) + "</span>";
 }
 
 /* The hands are dealt face-down before the result exists, so the words and the
@@ -1309,21 +1402,25 @@ function showdownHtml(st, s) {
 function fillShowdown(st) {
   const root = document.querySelector(".showdown");
   if (!root) return;
-  const rp = ((st.result && st.result.receipt) || {}).players || [];
-  const words = [0, 1].map((i) => (rp[i] && rp[i].words && rp[i].words[0]) || "");
-  const payoffs = (st.result && st.result.payoffs) || [0, 0];
+  const d = showdownData(st);
 
-  root.dataset.outcome = showdownOutcome(words);
+  root.dataset.outcome = showdownOutcome(d.payoffs);
+  const fig = root.querySelector(".pot-figure");
+  if (fig) fig.textContent = d.figure;
   root.querySelectorAll(".face-front").forEach((el, i) => {
-    el.textContent = words[i] || "";
-    el.classList.toggle("face-bad", TAKING.test(words[i] || ""));
-    el.classList.toggle("face-good", !TAKING.test(words[i] || ""));
+    const taking = TAKING.test(d.words[i] || "");
+    el.textContent = d.words[i] || "";
+    el.classList.toggle("face-bad", taking);
+    el.classList.toggle("face-good", !taking);
   });
   [".pot-slip-l", ".pot-slip-r"].forEach((sel, i) => {
     const el = root.querySelector(sel);
     if (!el) return;
-    el.textContent = money(payoffs[i]);
-    el.classList.toggle("is-nil", !payoffs[i]);
+    const taking = TAKING.test(d.words[i] || "");
+    el.textContent = money(d.payoffs[i]);
+    el.classList.toggle("is-nil", !d.payoffs[i]);
+    el.classList.toggle("slip-bad", taking);
+    el.classList.toggle("slip-good", !taking);
   });
 }
 
@@ -1352,6 +1449,7 @@ async function decideStaged(payload) {
 
   const token = ++s.showToken;
   const live = () => s.showToken === token && routePath() === "/play";
+  const roundsBefore = (st0.rounds || []).length;
   s.show = { phase: "lock", landed: false };
   s.inFlight = true;
   renderPlayNow();
@@ -1371,7 +1469,8 @@ async function decideStaged(payload) {
   if (!live()) return;
   s.match = st; s.dockVal = null; s.refetchN = 0;
 
-  if (st.done && st.result) {
+  const roundLanded = (st.rounds || []).length > roundsBefore;
+  if ((st.done && st.result) || roundLanded) {
     /* A slow model call EATS the held beat instead of adding to it, so the
        pause is the same length whether they answered in 200ms or in two
        seconds. Waiting is not drama. The hold is. */
@@ -1408,6 +1507,21 @@ function skipShowdown() {
   maybeRefetch();
 }
 
+/* One receipt, rendered the same whether it just happened or is being read
+   back off its own URL. */
+function receiptArticleHtml(o) {
+  const rec = o.rec || {};
+  return '<article class="receipt' + (o.animate ? " receipt-anim" : "") + '">' +
+    impressionHtml(o.id, rec.game, o.at, o.live) +
+    '<div class="stamp-wrap"><span class="stamp stamp-' + stampCategory(rec.stamp) + '">' + esc(rec.stamp || "SETTLED") + "</span></div>" +
+    '<h3 class="receipt-headline">' + esc(o.headline || "") + "</h3>" +
+    (rec.detail ? '<p class="receipt-detail">' + esc(rec.detail) + "</p>" : "") +
+    '<div class="receipt-rows">' + potRowHtml(rec.game) + (rec.players || []).map(receiptRowHtml).join("") + "</div>" +
+    quotesHtml(rec, rec.game) +
+    '<div class="receipt-foot">Golden Arena · behavioral receipt</div>' +
+  "</article>";
+}
+
 /* — the reveal — */
 function revealHtml(st, s) {
   const r = st.result;
@@ -1423,28 +1537,66 @@ function revealHtml(st, s) {
   const dim1 = p1 < p0 ? " dim" : "";
   const dis = s.inFlight ? " disabled" : "";
   return '<section class="reveal">' +
+    (st.game === "prisoners" ? ledgerHtml(st, 0) : "") +
     '<div class="payoff-row">' +
       '<div class="payoff"><span class="payoff-who">You</span><span class="payoff-num' + dim0 + '" data-count="' + p0 + '">$0</span></div>' +
       '<span class="payoff-vs">·</span>' +
       '<div class="payoff"><span class="payoff-who">' + esc(oppLabel) + '</span><span class="payoff-num' + dim1 + '" data-count="' + p1 + '">$0</span></div>' +
     "</div>" +
-    '<article class="receipt' + (animate ? " receipt-anim" : "") + '">' +
-      impressionHtml(s.matchId, rec.game || st.game) +
-      '<div class="stamp-wrap"><span class="stamp stamp-' + cat + '">' + esc(rec.stamp || "SETTLED") + "</span></div>" +
-      '<h3 class="receipt-headline">' + esc(rec.headline || "") + "</h3>" +
-      (rec.detail ? '<p class="receipt-detail">' + esc(rec.detail) + "</p>" : "") +
-      '<div class="receipt-rows">' + potRowHtml(rec.game || st.game) + (rec.players || []).map(receiptRowHtml).join("") + "</div>" +
-      quotesHtml(rec, st.game) +
-      '<div class="receipt-foot">Golden Arena · behavioral receipt</div>' +
-    "</article>" +
+    receiptArticleHtml({ id: s.matchId, rec: rec, headline: rec.headline, animate: animate }) +
     '<div class="reveal-actions">' +
       (st.blind && !st.revealed
         ? '<button type="button" class="btn btn-primary" data-action="reveal-opponent"' + dis + ">Who was that?</button>"
         : "") +
       '<button type="button" class="btn ' + (st.blind && !st.revealed ? "btn-quiet" : "btn-primary") + '" data-action="play-again"' + dis + ">" + (s.inFlight ? "Dealing…" : "Play again") + "</button>" +
+      '<button type="button" class="btn btn-quiet" data-action="copy-link" data-id="' + esc(s.matchId || "") + '">Copy link</button>' +
       '<button type="button" class="btn btn-quiet" data-action="rig-again"' + dis + ">Rig it differently</button>" +
       '<a class="btn btn-quiet" href="#/board">See the Index</a>' +
     "</div></section>";
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   VIEW 6 · #/receipt/<id> — one impression, read back off its own URL
+   ═══════════════════════════════════════════════════════════════════════ */
+async function renderReceipt(rawId) {
+  const token = viewToken;
+  const id = decodeURIComponent(rawId || "");
+  setRegister(false);
+  $view.innerHTML = runheadHtml("The impression") +
+    '<section class="sheet"><div><p class="dock-note">Fetching the impression…</p></div></section>';
+  enterView();
+
+  let data;
+  try {
+    data = await api("/api/record/" + encodeURIComponent(id));
+  } catch (err) {
+    if (token !== viewToken) return;
+    $view.innerHTML = runheadHtml("Not on file") +
+      '<section class="sheet"><div class="card empty-state"><div class="empty-art">◆</div>' +
+      "<h3>Nothing under that number</h3><p>" + esc(err.error || "That impression is not in the archive.") + "</p>" +
+      '<a class="btn btn-primary" href="#/play">Take a seat</a></div></section>' +
+      folioHtml("Not on file");
+    enterView();
+    return;
+  }
+  if (token !== viewToken) return;
+
+  const rec = data.record || {};
+  $view.innerHTML = runheadHtml("The impression") +
+    '<section class="reveal sheet"><div>' +
+      receiptArticleHtml({ id: rec.id, rec: data.receipt, headline: data.headline, at: rec.at, live: rec.live }) +
+      '<div class="reveal-actions">' +
+        '<a class="btn btn-primary" href="#/play">Take a seat yourself</a>' +
+        '<button type="button" class="btn btn-quiet" data-action="copy-link" data-id="' + esc(rec.id || id) + '">Copy link</button>' +
+        '<a class="btn btn-quiet" href="#/board">See the Index</a>' +
+      "</div>" +
+      '<aside class="margin-note"><span class="margin-note-h">This impression</span>' +
+      "Every finished match is filed under its own number and kept in the archive. " +
+      "What you are looking at is one of them, exactly as it was printed. " +
+      "The Index is built from all of them together." +
+      "</aside></section>" +
+    folioHtml("The impression");
+  enterView();
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -1837,6 +1989,7 @@ document.addEventListener("click", (e) => {
     case "set-blind": playState.blind = el.dataset.on === "1"; renderPlayNow(); break;
     case "reveal-opponent": revealOpponent(); break;
     case "skip-showdown": skipShowdown(); break;
+    case "copy-link": copyReceiptLink(el.dataset.id); break;
     case "toggle-power": togglePower(el.dataset.side, el.dataset.id); break;
     case "enter-arena": enterArena(); break;
     case "decide": {

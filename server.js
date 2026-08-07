@@ -131,6 +131,7 @@ function publicState(match) {
       ? match.transcript.map((t) => ({ ...t, text: mask(t.text) }))
       : match.transcript,
     round: match.round,
+    rounds: match.pdHistory || null,
     waitingFor: pairs.length && match.waitingFor
       ? { ...match.waitingFor, note: mask(match.waitingFor.note) }
       : match.waitingFor,

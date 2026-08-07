@@ -1486,13 +1486,14 @@ a.chip:hover { border-color: var(--text-secondary); color: var(--text-primary); 
 /* the money moves, and only then */
 .showdown[data-phase="pay"] .pot-label { opacity: 0; }
 .showdown[data-phase="pay"] .pot-slip { opacity: 1; }
-.showdown[data-phase="pay"] .pot-slip-l { transform: translate(-50%, 0) translateX(clamp(-86px, -8vw, -30px)); color: var(--sig-good); }
-.showdown[data-phase="pay"] .pot-slip-r { transform: translate(-50%, 0) translateX(clamp(30px, 8vw, 86px)); color: var(--sig-good); }
+.showdown[data-phase="pay"] .pot-slip-l { transform: translate(-50%, 0) translateX(clamp(-86px, -8vw, -30px)); }
+.showdown[data-phase="pay"] .pot-slip-r { transform: translate(-50%, 0) translateX(clamp(30px, 8vw, 86px)); }
 .showdown[data-phase="pay"] .pot-figure { opacity: 0; }
 
-/* one steals: the whole pot goes their way, and it is not a good colour */
-.showdown[data-outcome="took-0"][data-phase="pay"] .pot-slip-l,
-.showdown[data-outcome="took-1"][data-phase="pay"] .pot-slip-r { color: var(--sig-bad); }
+/* the colour follows the WORD, not the winner: money that was taken reads red
+   even when taking it made the larger pile */
+.pot-slip.slip-good { color: var(--sig-good); }
+.pot-slip.slip-bad  { color: var(--sig-bad); }
 
 /* both steal: the entry is struck out, the way a ledger cancels one */
 .showdown[data-outcome="burned"][data-phase="pay"] .pot-slip { opacity: 0; }
@@ -1517,3 +1518,37 @@ a.chip:hover { border-color: var(--text-secondary); color: var(--text-primary); 
 @media (prefers-reduced-motion: reduce) {
   .showdown::before, .flipper, .pot-figure, .pot-slip, .pot-strike, .pot-label { transition: none; }
 }
+
+/* ── the ledger: five rounds as a relationship, not a list ─────────────── */
+.ledger {
+  width: 100%; border-collapse: collapse;
+  margin-bottom: var(--sp-4);
+  font-size: var(--fs-xs);
+}
+.lg-cap {
+  text-align: left; padding-bottom: var(--sp-2);
+  font-size: var(--fs-xs); letter-spacing: var(--track-label);
+  text-transform: uppercase; color: var(--text-tertiary);
+}
+.ledger th, .ledger td { padding: var(--sp-1) var(--sp-2); text-align: left; border-bottom: 1px solid var(--rule-faint); }
+.ledger thead th { font-weight: 400; letter-spacing: var(--track-label); text-transform: uppercase; color: var(--text-tertiary); }
+.ledger tbody th, .ledger tfoot th { font-weight: 400; color: var(--text-tertiary); font-family: var(--font-mono); }
+.lg-cash { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.lg-move { text-transform: uppercase; letter-spacing: .04em; }
+.lg-coop { color: var(--sig-good); }
+.lg-defect { color: var(--sig-bad); }
+.lg-todo td, .lg-todo th { color: var(--text-tertiary); opacity: .5; }
+.lg-now td { color: var(--text-secondary); letter-spacing: var(--track-label); text-transform: uppercase; font-size: var(--fs-xs); }
+.ledger tfoot th, .ledger tfoot .lg-cash { border-bottom: 0; border-top: 1px solid var(--foil-rule); color: var(--text-primary); }
+/* a defection that answers a defection: a grudge, not a strategy */
+.lg-grudge { margin-left: .35em; text-decoration: none; border: 0; color: var(--text-tertiary); cursor: help; }
+.lg-head-group th { border-bottom: 0; padding-bottom: 0; color: var(--text-secondary); }
+.lg-head-group + tr th { padding-top: 0; }
+
+/* ── lines arrive, they do not appear ─────────────────────────────────── */
+@keyframes line-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.is-arriving {
+  animation: line-in 240ms var(--ease-out) backwards;
+  animation-delay: calc(var(--in, 0) * 420ms);
+}
+@media (prefers-reduced-motion: reduce) { .is-arriving { animation: none; } }
