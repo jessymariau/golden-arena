@@ -8,6 +8,7 @@
   "scripts": {
     "start": "node server.js",
     "check:models": "node scripts/check-models.mjs",
+    "bake:seed": "node scripts/bake-seed.mjs",
     "test:byok": "node scripts/test-byok.mjs"
   },
   "engines": {

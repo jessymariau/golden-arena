@@ -11,7 +11,9 @@ import { liveMode, hasServerKey, budgetState, verifyKey, scrub, DEFAULT_MODELS }
 import { POWERS, validPowers } from "./lib/powers.js";
 import { GAMES, gameMeta, createMatch, advance, humanInput, setMatchKey } from "./lib/games.js";
 import { initStore, records, addRecord, storageMode } from "./lib/storage.js";
-import { computeBoard } from "./lib/bench.js";
+import { computeBoard, receiptOf } from "./lib/bench.js";
+import { seedPlan } from "./lib/seedplan.js";
+import { headlineOf, shareMeta, sharePage, missingPage, MISSING_RECORD } from "./lib/share.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3001;
@@ -47,6 +49,7 @@ function visitorKey(req) {
 // ---------------------------------------------------------------------------
 const SESSION_TTL_MS = 30 * 60 * 1000;
 const SESSION_CAP = 300;
+const COOLDOWN_MS = 60_000;
 const sessions = new Map(); // matchId -> match (insertion order = age)
 const lastMatchAt = new Map(); // ip -> ts
 const lastTournamentAt = new Map();
@@ -55,6 +58,26 @@ function ipOf(req) {
   const fwd = req.headers["x-forwarded-for"];
   if (typeof fwd === "string" && fwd.length) return fwd.split(",")[0].trim();
   return req.socket.remoteAddress || "unknown";
+}
+
+// A cooldown only makes sense when OUR key is buying the tokens. A demo match
+// is scripted and costs nothing, and a visitor on their own key is spending
+// their own money — throttling either protects nobody and reads as a bug.
+function housePays(req) {
+  return hasServerKey() && !visitorKey(req);
+}
+
+// A refusal must look like a refusal: the real reason, and a clock you can
+// watch. Never a vague apology the visitor has to read as a crash.
+function cooledDown(req, store) {
+  if (!housePays(req)) return 0;
+  const waited = Date.now() - (store.get(ipOf(req)) || 0);
+  return waited < COOLDOWN_MS ? COOLDOWN_MS - waited : 0;
+}
+
+function refuse(res, retryAfterMs, message) {
+  res.set("Retry-After", String(Math.ceil(retryAfterMs / 1000)));
+  return res.status(429).json({ error: message, retryAfterMs });
 }
 
 function putSession(match) {
@@ -162,6 +185,48 @@ app.get("/api/board", (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// one receipt, and its permalink
+// ---------------------------------------------------------------------------
+// A receipt is the thing people screenshot. Until now it had no URL, so a
+// great result was unlinkable and unfurled as nothing. These two routes fix
+// that: JSON for the app, server-rendered HTML for the crawler.
+
+// Ids are minted from Date+Math.random (seeded ones carry a "seed-" prefix), so
+// this shape is generous but closed. It is also what keeps a hostile :id out of
+// the HTML and the redirect below — nothing else may reach them.
+const ID_SHAPE = /^[A-Za-z0-9_-]{1,64}$/;
+
+function findRecord(id) {
+  return ID_SHAPE.test(id) ? records().find((r) => String(r.id) === id) : null;
+}
+
+// Absolute URLs for og: tags. Behind Replit's proxy the scheme only survives in
+// the forwarded header; PUBLIC_ORIGIN wins where a deployment knows its name.
+function originOf(req) {
+  if (process.env.PUBLIC_ORIGIN) return process.env.PUBLIC_ORIGIN.replace(/\/+$/, "");
+  const proto = String(req.get("x-forwarded-proto") || req.protocol || "http").split(",")[0].trim();
+  return `${proto}://${req.get("host")}`;
+}
+
+app.get("/api/record/:id", (req, res) => {
+  const rec = findRecord(req.params.id);
+  if (!rec) return res.status(404).json({ error: MISSING_RECORD });
+  res.json({
+    record: rec,
+    receipt: receiptOf(rec), // same shape the Index renders
+    headline: headlineOf(rec),
+    share: shareMeta(rec, originOf(req)),
+  });
+});
+
+app.get("/r/:id", (req, res) => {
+  const rec = findRecord(req.params.id);
+  const origin = originOf(req);
+  if (!rec) return res.status(404).type("html").send(missingPage(origin));
+  res.type("html").send(sharePage(rec, origin));
+});
+
+// ---------------------------------------------------------------------------
 // key check — "is this key any good?" without spending anything on it
 // ---------------------------------------------------------------------------
 const VERIFY_PER_MIN = 6;
@@ -172,8 +237,9 @@ app.post("/api/verify-key", wrap(async (req, res) => {
   const now = Date.now();
   const hit = verifyHits.get(ip);
   if (!hit || now > hit.resetAt) verifyHits.set(ip, { n: 1, resetAt: now + 60_000 });
-  else if (hit.n >= VERIFY_PER_MIN) return res.status(429).json({ ok: false, error: "Too many checks. Give it a minute." });
-  else hit.n += 1;
+  else if (hit.n >= VERIFY_PER_MIN) {
+    return refuse(res, hit.resetAt - now, `That is ${VERIFY_PER_MIN} key checks in a minute. Try the next one in`);
+  } else hit.n += 1;
 
   const key = visitorKey(req);
   if (!key) return res.status(400).json({ ok: false, error: "No key on that request. Paste one first." });
@@ -189,11 +255,11 @@ app.post("/api/match", wrap(async (req, res) => {
   const opponent = DEFAULT_MODELS.find((m) => m.id === opponentId);
   if (!opponent) return res.status(400).json({ error: `unknown model: ${opponentId}` });
 
-  const ip = ipOf(req);
-  if (Date.now() - (lastMatchAt.get(ip) || 0) < 15_000) {
-    return res.status(429).json({ error: "Easy now. One new match every 15 seconds." });
+  const wait = cooledDown(req, lastMatchAt);
+  if (wait) {
+    return refuse(res, wait, "The house is buying these matches, so there is a minute between them. Bring your own key and you play as fast as you like. Next seat in");
   }
-  lastMatchAt.set(ip, Date.now());
+  if (housePays(req)) lastMatchAt.set(ipOf(req), Date.now());
 
   const players = [
     { label: "You", isHuman: true, powers: validPowers(powers?.human) },
@@ -252,7 +318,14 @@ function applyRig(players, rig) {
 }
 
 app.post("/api/tournament", wrap(async (req, res) => {
-  if (tournament.running) return res.status(409).json({ error: "A tournament is already running." });
+  if (tournament.running) {
+    const { done, total } = tournament.progress;
+    const name = (gameMeta().find((g) => g.id === tournament.game) || {}).name || "A";
+    return res.status(409).json({
+      error: `A ${name} tournament is already on the floor, ${done} of ${total} matches in. Watch it finish, or clear the table.`,
+      tournament: { game: tournament.game, progress: tournament.progress },
+    });
+  }
 
   const { game, models, rig } = req.body || {};
   if (!GAMES[game]) return res.status(400).json({ error: `unknown game: ${game}` });
@@ -266,11 +339,11 @@ app.post("/api/tournament", wrap(async (req, res) => {
     roster.push(known);
   }
 
-  const ip = ipOf(req);
-  if (Date.now() - (lastTournamentAt.get(ip) || 0) < 60_000) {
-    return res.status(429).json({ error: "One tournament per minute. Let this one settle first." });
+  const wait = cooledDown(req, lastTournamentAt);
+  if (wait) {
+    return refuse(res, wait, "One tournament a minute while the house is paying for them. Bring your own key and that ceiling lifts. Next one in");
   }
-  lastTournamentAt.set(ip, Date.now());
+  if (housePays(req)) lastTournamentAt.set(ipOf(req), Date.now());
 
   const pairs = [];
   for (let i = 0; i < roster.length; i++)
@@ -332,29 +405,8 @@ app.use((err, req, res, next) => {
 // ---------------------------------------------------------------------------
 // demo seeding — judges should never meet an empty board
 // ---------------------------------------------------------------------------
-// The plan is deterministic and rigged-heavy on purpose: every model plays two
-// advantaged prisoners matches (10 counted decisions) and at least two neutral
-// ones, so the corruption column has real data the first time a judge sees it.
-// Prisoners rounds are what fill the pools — one match is five decisions.
-function seedPlan() {
-  const M = DEFAULT_MODELS;
-  const plan = [];
-  for (let k = 0; k < M.length; k++) {
-    plan.push({ game: "prisoners", a: M[k], b: M[(k + 1) % M.length], aPowers: ["mindreader"] });
-    plan.push({ game: "prisoners", a: M[k], b: M[(k + 2) % M.length], bPowers: ["muzzled"] });
-  }
-  plan.push({ game: "prisoners", a: M[0], b: M[1] });
-  plan.push({ game: "prisoners", a: M[2], b: M[3] });
-  plan.push({ game: "prisoners", a: M[0], b: M[2] });
-  plan.push({ game: "prisoners", a: M[1], b: M[3] });
-  plan.push({ game: "splitsteal", a: M[0], b: M[3] });
-  plan.push({ game: "splitsteal", a: M[1], b: M[2] });
-  plan.push({ game: "ultimatum", a: M[0], b: M[1] });
-  plan.push({ game: "ultimatum", a: M[2], b: M[3] });
-  plan.push({ game: "trust", a: M[0], b: M[2] });
-  plan.push({ game: "trust", a: M[1], b: M[3] });
-  return plan;
-}
+// The plan itself lives in lib/seedplan.js, shared with scripts/bake-seed.mjs,
+// so the pre-baked board and this fallback can never simulate different games.
 
 // Pre-baked board (seed/records.json, generated from the same plan below).
 // Autoscale containers are ephemeral and scale to zero, so without this every
