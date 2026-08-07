@@ -781,6 +781,7 @@ const playState = {
   opToken: 0,              /* staleness guard: bumping it orphans in-flight match requests */
   dockVal: null,           /* slider position between renders */
   seenLines: null,         /* lines already painted; null = this match has not been painted yet */
+  dockKey: null,           /* which ask is on screen, so we scroll to it once and not on every poll */
   revealAnimated: false,
   refetchTimer: null,
   refetchN: 0,
@@ -822,6 +823,7 @@ function renderPlayNow() {
 function afterPlayRender() {
   const t = document.getElementById("transcript");
   if (t) t.scrollTop = t.scrollHeight;
+  bringDockIntoView();
   const mi = document.getElementById("msg-input");
   /* autofocus only on pointer-fine devices — no keyboard pop on mobile */
   if (mi && !playState.inFlight && window.matchMedia("(pointer: fine)").matches) mi.focus();
@@ -1013,6 +1015,22 @@ function maybeRefetch() {
     } catch (e) { /* keep the transcript; try again on the next tick */ }
     maybeRefetch();
   }, 1200);
+}
+
+/* The transcript grows all game, so by the time it is your turn the controls
+   have been pushed off the bottom of the screen: measured 925px down a 768px
+   viewport, with nothing on screen suggesting there was anything to scroll to.
+   Scroll only when the ask CHANGES, never on a poll, or it fights the reader. */
+function bringDockIntoView() {
+  const s = playState;
+  const st = s.match;
+  const wf = st && st.waitingFor;
+  if (!wf || wf.seat !== 0 || s.show) return;
+  const key = [st.id, st.round, wf.kind, (wf.decision || {}).type || ""].join(":");
+  if (key === s.dockKey) return;
+  s.dockKey = key;
+  const dock = document.querySelector(".dock");
+  if (dock) dock.scrollIntoView({ block: "end", behavior: REDUCED ? "auto" : "smooth" });
 }
 
 /* — match stage — */
@@ -1312,7 +1330,7 @@ async function copyReceiptLink(id) {
    server for effect and nothing is faked: the beat is a beat, not a spinner.
    Click anywhere to skip it.
    ═══════════════════════════════════════════════════════════════════════ */
-const SHOW = { lock: 950, flip: 560, read: 820, pay: 760 };
+const SHOW = { lock: 700, flip: 560, read: 440, pay: 820 };
 const SHOWDOWN_GAMES = { splitsteal: true, prisoners: true };
 const PD_ROUNDS = 5;
 
@@ -1387,6 +1405,19 @@ function showdownHtml(st, s) {
     '<p class="showdown-line" role="status">' +
       esc(show.phase === "lock" ? (show.landed ? "Turning them over." : "Locked. Waiting on them.") : "") +
     "</p></section>";
+}
+
+/* The beat after the turn used to be silent AND still. One line, in the
+   archive's voice, said at the moment the money moves. */
+function verdictLine(st) {
+  const d = showdownData(st);
+  const them = (st.players && st.players[1] ? st.players[1].label : "They");
+  switch (showdownOutcome(d.payoffs)) {
+    case "burned": return "Nobody gets paid.";
+    case "took-0": return "You took it.";
+    case "took-1": return them + " took it.";
+    default: return "Even split.";
+  }
 }
 
 function slipHtml(side, payoff, word) {
@@ -1486,6 +1517,7 @@ async function decideStaged(payload) {
     if (!live()) return;
 
     setShowPhase("pay");
+    setShowLine(verdictLine(st));
     await wait(SHOW.pay);
     if (!live()) return;
   }

@@ -1470,12 +1470,15 @@ a.chip:hover { border-color: var(--text-secondary); color: var(--text-primary); 
   position: absolute; top: 50%; left: 50%;
   margin-top: -.5em;
   font-family: var(--font-mono); font-variant-numeric: tabular-nums;
-  font-size: var(--fs-lg); line-height: 1; white-space: nowrap;
+  font-size: var(--fs-xl); line-height: 1; white-space: nowrap;
   opacity: 0; transform: translate(-50%, 0);
   transition: opacity 360ms var(--ease-out), transform 700ms var(--ease-expo);
   pointer-events: none;
 }
-.pot-slip.is-nil { display: none; }
+/* The zero is not an absence, it is the result. Hiding it left a steal
+   reading as one number floating beside two cards, with nothing to say the
+   other player walked away with nothing. */
+.pot-slip.is-nil { color: var(--text-tertiary); opacity: .75; }
 .pot-strike {
   position: absolute; top: 50%; left: -6%; width: 112%; height: 2px;
   background: var(--sig-bad);
@@ -1488,7 +1491,7 @@ a.chip:hover { border-color: var(--text-secondary); color: var(--text-primary); 
 .showdown[data-phase="pay"] .pot-slip { opacity: 1; }
 .showdown[data-phase="pay"] .pot-slip-l { transform: translate(-50%, 0) translateX(clamp(-86px, -8vw, -30px)); }
 .showdown[data-phase="pay"] .pot-slip-r { transform: translate(-50%, 0) translateX(clamp(30px, 8vw, 86px)); }
-.showdown[data-phase="pay"] .pot-figure { opacity: 0; }
+.showdown[data-phase="pay"] .pot-figure { opacity: .22; }
 
 /* the colour follows the WORD, not the winner: money that was taken reads red
    even when taking it made the larger pile */
@@ -1512,7 +1515,7 @@ a.chip:hover { border-color: var(--text-secondary); color: var(--text-primary); 
   .monogram { width: 26px; height: 26px; }
   .nameplate-who { max-width: 11ch; }
   /* a narrower gap needs a narrower note, or the money lands on the card */
-  .pot-slip { font-size: var(--fs-md); }
+  .pot-slip { font-size: var(--fs-lg); }
 }
 
 @media (prefers-reduced-motion: reduce) {
