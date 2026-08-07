@@ -51,7 +51,10 @@ function toast(msg, kind) {
 }
 
 function countUp(el, target) {
-  if (REDUCED) { el.textContent = money(target); return; }
+  /* requestAnimationFrame does not tick in a hidden tab — without this guard
+     the hero figure is left reading $0, which is a wrong number on the most
+     important element of the reveal */
+  if (REDUCED || document.hidden) { el.textContent = money(target); return; }
   const dur = 750;
   const t0 = performance.now();
   function tick(t) {
@@ -102,12 +105,12 @@ const ATTRIB = {
   trust: "moments before pocketing the wire",
   ultimatum: "moments before the squeeze",
 };
-const STAMP_RED = new Set(["BETRAYAL", "MUTUAL RUIN", "TOTAL WAR", "EXPLOITATION", "SCORCHED EARTH", "SPITE", "FLEECED", "TRUST BETRAYED"]);
-const STAMP_GOLD = new Set(["MUTUAL HONOR", "FAIR DEAL", "FAITH REWARDED", "UNEASY PEACE"]);
+const STAMP_BAD = new Set(["BETRAYAL", "MUTUAL RUIN", "TOTAL WAR", "EXPLOITATION", "SCORCHED EARTH", "SPITE", "FLEECED", "TRUST BETRAYED"]);
+const STAMP_GOOD = new Set(["MUTUAL HONOR", "FAIR DEAL", "FAITH REWARDED", "UNEASY PEACE"]);
 function stampCategory(s) {
   const u = String(s || "").toUpperCase();
-  if (STAMP_RED.has(u)) return "red";
-  if (STAMP_GOLD.has(u)) return "gold";
+  if (STAMP_BAD.has(u)) return "bad";
+  if (STAMP_GOOD.has(u)) return "good";
   return "neutral";
 }
 
@@ -130,14 +133,40 @@ function potRowHtml(gameId) {
   return '<div class="receipt-pot"><span>' + pair[0] + "</span><span>" + pair[1] + "</span></div>";
 }
 
-/* serial line: Nº {last 4 of match id} · DD MMM YYYY · DEMO/LIVE TABLE */
+/* Every receipt is an IMPRESSION: number · plate · edition · date.
+   Nº {last 4 of match id} — the archive's catalogue line. */
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-function serialHtml(matchId) {
+function impressionHtml(matchId, gameId) {
   const d = new Date();
   const date = String(d.getDate()).padStart(2, "0") + " " + MONTHS[d.getMonth()] + " " + d.getFullYear();
-  const mode = CONFIG && CONFIG.liveMode ? "LIVE TABLE" : "DEMO TABLE";
+  const edition = CONFIG && CONFIG.liveMode ? "Live table" : "Demo table";
   const id = String(matchId || "").slice(-4).toUpperCase();
-  return '<div class="receipt-serial">' + (id ? "Nº " + esc(id) + " · " : "") + date + " · " + mode + "</div>";
+  return '<div class="impression">' +
+    '<span class="imp-no">Nº ' + esc(id || "————") + "</span>" +
+    '<span class="imp-meta">Plate <b>' + esc(gameName(gameId)) + "</b></span>" +
+    '<span class="imp-meta">Edition <b>' + edition + "</b></span>" +
+    '<span class="imp-meta">' + date + "</span>" +
+    "</div>";
+}
+
+/* ── the editorial page furniture: running head + folio ────────────────── */
+let RECORDS = null;               /* matches on the file — fills the Nº */
+function recordNo() { return RECORDS == null ? "—" : String(RECORDS); }
+function noteRecords(board) {
+  if (board && board.totals && board.totals.matches != null) {
+    RECORDS = Number(board.totals.matches) || 0;
+    document.querySelectorAll(".rh-no").forEach((e) => { e.textContent = "Nº " + recordNo(); });
+    document.querySelectorAll(".fo-no").forEach((e) => { e.textContent = recordNo() + " records on the file"; });
+  }
+}
+function runheadHtml(section) {
+  return '<p class="runhead"><b>Golden Arena</b> · ' + esc(section) +
+    '<span class="rh-no">Nº ' + recordNo() + "</span></p>";
+}
+function folioHtml(section, extra) {
+  return '<footer class="folio"><span>' + esc(section) + "</span>" +
+    (extra || "") +
+    '<span class="fo-no">' + recordNo() + " records on the file</span></footer>";
 }
 
 function receiptRowHtml(p) {
@@ -182,18 +211,60 @@ function parseHash() {
 }
 function routePath() { return parseHash().path; }
 
+/* ── the two registers ──────────────────────────────────────────────────
+   THE ARCHIVE is the default: printed cream paper, everywhere.
+   THE ROOM is dark and exists only inside a live match. Entering one dims
+   the lights; finishing it prints the record back onto paper. The class
+   sits on <html> and remaps the semantic tokens underneath every
+   component — nothing branches on palette. */
+let REGISTER = "archive";
+let registerTimer = null;
+function setRegister(room) {
+  const next = room ? "room" : "archive";
+  if (next === REGISTER) return;
+  REGISTER = next;
+  const root = document.documentElement;
+
+  /* Wash the outgoing register over the whole field, then let it fade — the
+     new scene resolves through it. The layer is what carries the dissolve;
+     the token swap underneath it is instantaneous by design (see the note on
+     .lights-wash in style.css). */
+  if (!REDUCED) {
+    const from = getComputedStyle(document.body).backgroundColor;
+    const old = document.getElementById("lights-wash");
+    if (old) old.remove();
+    const wash = document.createElement("div");
+    wash.id = "lights-wash";
+    wash.className = "lights-wash";
+    wash.setAttribute("aria-hidden", "true");
+    wash.style.setProperty("--wash-from", from);
+    document.body.appendChild(wash);
+    wash.addEventListener("animationend", () => wash.remove(), { once: true });
+    setTimeout(() => wash.remove(), 1200);   /* belt and braces */
+  }
+
+  root.classList.add("turning");
+  root.classList.toggle("register-room", room);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", room ? "#14100C" : "#F2ECE0");
+  clearTimeout(registerTimer);
+  registerTimer = setTimeout(() => root.classList.remove("turning"), 640);
+}
+
 function enterView() {
   $view.classList.remove("view-in");
-  void $view.offsetWidth; /* restart the entrance animation */
+  void $view.offsetWidth; /* restart the 120ms opacity fade */
   $view.classList.add("view-in");
 }
 
 function renderOffline() {
+  setRegister(false);
   $view.innerHTML =
+    runheadHtml("Out of service") +
     '<section><div class="card empty-state"><div class="empty-art">◆</div>' +
     "<h3>The arena is dark</h3>" +
     "<p>Couldn't reach the house. Check the server, then pull the switch.</p>" +
-    '<button type="button" class="btn btn-gold" data-action="reload-view">Relight the table</button></div></section>';
+    '<button type="button" class="btn btn-primary" data-action="reload-view">Relight the table</button></div></section>';
   enterView();
 }
 
@@ -209,6 +280,8 @@ function route() {
   clearTimeout(watchState.timer);
   clearTimeout(playState.refetchTimer);
   setNav(path);
+  /* every view but a live match belongs to the archive */
+  if (path !== "/play") setRegister(false);
   if (path === "/play") renderPlay(params);
   else if (path === "/watch") renderWatch(params);
   else if (path === "/board") renderBoard();
@@ -234,38 +307,47 @@ async function renderHome() {
       '<p class="game-tag">' + esc(g.tagline) + "</p>" +
       '<div class="game-card-foot"><span class="game-min">' + esc(g.minutes) + "</span>" +
       '<span class="game-actions">' +
-        '<a class="btn btn-sm btn-gold" href="#/play?game=' + encodeURIComponent(g.id) + '">Play</a>' +
-        '<a class="btn btn-sm btn-ghost" href="#/watch?game=' + encodeURIComponent(g.id) + '">Spectate</a>' +
+        '<a class="btn btn-sm btn-primary" href="#/play?game=' + encodeURIComponent(g.id) + '">Play</a>' +
+        '<a class="btn btn-sm btn-quiet" href="#/watch?game=' + encodeURIComponent(g.id) + '">Spectate</a>' +
       "</span></div></article>").join("");
 
   const rigChips = (cfg.powers || []).map((p) =>
     '<span class="chip ' + (p.kind === "power" ? "chip-power" : "chip-handicap") + '" title="' + esc(p.blurb) + '">' + esc(p.label) + "</span>").join("");
 
   $view.innerHTML =
+    runheadHtml("The arena floor") +
     '<section class="hero">' +
-      '<p class="kicker kicker-rule">The Golden Arena</p>' +
-      '<h1 class="hero-title"><span class="foil">Can you tell when an AI is <em>lying to you?</em></span></h1>' +
+      '<p class="kicker kicker-rule">A behavioural record of the machines</p>' +
+      '<h1 class="hero-title">Can you tell when an AI is <em>lying to you?</em></h1>' +
       '<p class="hero-sub">Sit down opposite a frontier model. Negotiate for real stakes. Then find out what it decided behind your back. Every game feeds the Behavioral Index — the psychology leaderboard of the machines.</p>' +
-      '<div class="hero-cta"><a class="btn btn-gold btn-lg" href="#/play">Take a seat</a><a class="btn btn-ghost btn-lg" href="#/board">See the Index</a></div>' +
+      '<div class="hero-cta"><a class="btn btn-primary btn-lg" href="#/play">Take a seat</a><a class="btn btn-quiet btn-lg" href="#/board">See the Index</a></div>' +
     "</section>" +
-    '<section class="home-sec"><h2 class="sec-label">The four tables</h2><div class="game-grid">' + gameCards + "</div></section>" +
-    '<section class="home-sec"><div class="card rig-strip">' +
+    '<section class="home-sec sheet"><div><h2 class="sec-label">The four tables</h2><div class="game-grid">' + gameCards + "</div></div>" +
+      '<aside class="margin-note"><span class="margin-note-h">On the plates</span>' +
+      "Four classic behavioural-economics games, each cut to two to four minutes. Every finished match is filed as a numbered impression and enters the catalogue." +
+      "</aside></section>" +
+    '<section class="home-sec sheet"><div>' +
       '<h2 class="sec-label">The rig</h2>' +
       '<p class="rig-pitch">Level playing fields are boring. Hand one player a superpower. Cripple the other. Watch what power does to honesty.</p>' +
-      '<div class="chips chips-center">' + rigChips + "</div>" +
-    "</div></section>" +
-    '<section class="home-sec"><h2 class="sec-label">The Index, currently</h2>' +
-      '<div class="card teaser" id="teaser-body"><div class="teaser-loading">Opening the ledger…</div></div>' +
-    "</section>" +
-    '<footer class="site-foot">' +
-      "<p>Promise-breaking is detected by a labelled heuristic, not a judge. Small samples are small — the Index shows its n.</p>" +
-      '<p><a class="foot-link" href="https://github.com/jessymariau/golden-arena" target="_blank" rel="noopener">GitHub</a> · Built for the Replit Buildathon — remix it.</p>' +
-    "</footer>";
+      '<div class="chips">' + rigChips + "</div>" +
+    "</div>" +
+      '<aside class="margin-note"><span class="margin-note-h">Corruption</span>' +
+      "The gap between how a model plays on a level field and how it plays holding the upper hand. It needs both kinds of match before it will show a number." +
+      "</aside></section>" +
+    '<section class="home-sec sheet"><div><h2 class="sec-label">The Index, currently</h2>' +
+      '<div class="teaser" id="teaser-body"><div class="teaser-loading">Opening the ledger…</div></div>' +
+    "</div>" +
+      '<aside class="margin-note"><span class="margin-note-h">Method</span>' +
+      "Promise-breaking is detected by a labelled heuristic, not a judge. Small samples are small — every axis carries its <b>n</b>, and axes stay hidden until they have data." +
+      "</aside></section>" +
+    folioHtml("The arena floor",
+      '<span><a class="foot-link" href="https://github.com/jessymariau/golden-arena" target="_blank" rel="noopener">GitHub</a> · Replit Buildathon</span>');
   enterView();
 
   try {
     const board = await api("/api/board");
     if (token !== viewToken) return;
+    noteRecords(board);
     const t = document.getElementById("teaser-body");
     if (t) t.innerHTML = teaserHtml(board);
   } catch (e) {
@@ -279,7 +361,7 @@ function teaserHtml(board) {
   const rows = (board && board.rows) || [];
   if (!rows.length) {
     return '<div class="teaser-empty"><p>The Index is empty. No one has sat down yet.</p>' +
-      '<a class="btn btn-gold btn-sm" href="#/play">Be the first on the record</a></div>';
+      '<a class="btn btn-primary btn-sm" href="#/play">Be the first on the record</a></div>';
   }
   const ai = rows.filter((r) => !r.isHuman).slice(0, 3);
   const hu = rows.find((r) => r.isHuman);
@@ -299,7 +381,7 @@ function teaserHtml(board) {
       " across " + (hu.matches || 0) + " match" + (hu.matches === 1 ? "" : "es") + ".</div>"
     : "";
   return '<div class="teaser-rows">' + rowsHtml + "</div>" + humans +
-    '<div class="teaser-cta"><a class="btn btn-ghost btn-sm" href="#/board">Full Index</a></div>';
+    '<div class="teaser-cta"><a class="btn btn-quiet btn-sm" href="#/board">Full Index</a></div>';
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -343,9 +425,12 @@ async function renderPlay(params) {
 
 function renderPlayNow() {
   if (routePath() !== "/play" || !CONFIG) return;
-  $view.innerHTML = (playState.stage === "match" && playState.match)
-    ? matchHtml(playState)
-    : setupHtml(playState);
+  const st = playState.match;
+  const inMatch = playState.stage === "match" && st;
+  /* the lights go down for a live match and come back up — on paper — the
+     moment the record is settled. That transition carries the meaning. */
+  setRegister(!!(inMatch && !st.done));
+  $view.innerHTML = inMatch ? matchHtml(playState) : setupHtml(playState);
   enterView();
   afterPlayRender();
 }
@@ -381,19 +466,23 @@ function setupHtml(s) {
   const models = (cfg.models || []).map((m) =>
     '<button type="button" class="chip chip-model' + (s.opponentId === m.id ? " chip-on" : "") + '" role="radio" aria-checked="' + (s.opponentId === m.id) + '" data-action="pick-opp" data-id="' + esc(m.id) + '">' + esc(m.label) + "</button>").join("");
 
-  return '<section class="setup">' +
-    '<header class="view-head"><p class="kicker kicker-rule">Take a seat</p><h2><span class="foil">Pick your table. Rig it if you dare.</span></h2></header>' +
-    '<div class="card setup-card">' +
+  return runheadHtml("The table") +
+    '<section class="setup sheet"><div>' +
+    '<header class="view-head"><p class="kicker kicker-rule">Take a seat</p><h2>Pick your table. Rig it if you dare.</h2></header>' +
+    '<div class="setup-card">' +
       '<h3 class="setup-label">The game</h3>' +
       '<div class="seg" role="radiogroup" aria-label="Choose a game">' + games + "</div>" +
       '<h3 class="setup-label">The opponent</h3>' +
       '<div class="chips" role="radiogroup" aria-label="Choose an opponent">' + models + "</div>" +
       '<h3 class="setup-label">The rig <span class="setup-hint">optional · max two a side</span></h3>' +
       '<div class="rig-cols">' + rigColHtml("you", "You", s.you) + rigColHtml("them", "Them", s.them) + "</div>" +
-      '<p class="micro">Rig it however you like. The Index remembers who had the advantage.</p>' +
-      '<div class="enter-row"><button type="button" class="btn btn-gold btn-xl" data-action="enter-arena"' + (s.inFlight ? " disabled" : "") + ">" +
+      '<div class="enter-row"><button type="button" class="btn btn-primary btn-xl" data-action="enter-arena"' + (s.inFlight ? " disabled" : "") + ">" +
         (s.inFlight ? "Summoning your opponent…" : "Enter the arena") + "</button></div>" +
-    "</div></section>";
+    "</div></div>" +
+    '<aside class="margin-note"><span class="margin-note-h">On the rig</span>' +
+    "Rig it however you like — up to two advantages a side. The Index remembers who held them, and the corruption figure is built from exactly this difference." +
+    "</aside></section>" +
+    folioHtml("The table");
 }
 
 function rigColHtml(side, title, sel) {
@@ -514,15 +603,18 @@ function matchHtml(s) {
   const st = s.match;
   const opp = st.players && st.players[1] ? st.players[1] : { label: "Opponent", powers: [] };
   const you = st.players && st.players[0] ? st.players[0] : { label: "You", powers: [] };
-  return '<section class="match">' +
+  const settled = st.done && st.result;
+  return runheadHtml(settled ? "The record" : "In the room") +
+    '<section class="match">' +
     '<header class="match-head card">' +
       '<div class="match-title"><span class="kicker">' + esc(gameName(st.game)) + " · " + esc(POT_INFO[st.game] || "for real stakes") + "</span>" +
       '<h2 class="vs">You <em>vs</em> ' + esc(opp.label) + "</h2></div>" +
       '<div class="match-powers">' + sidePowersHtml("You", you.powers) + sidePowersHtml(opp.label, opp.powers) + "</div>" +
     "</header>" +
     '<div class="transcript" id="transcript" aria-label="Match transcript" aria-live="polite">' + transcriptHtml(st, s) + "</div>" +
-    (st.done && st.result ? revealHtml(st, s) : dockHtml(st, s)) +
-    "</section>";
+    (settled ? revealHtml(st, s) : dockHtml(st, s)) +
+    "</section>" +
+    folioHtml(settled ? "The record" : "In the room");
 }
 
 function sidePowersHtml(who, powers) {
@@ -588,7 +680,7 @@ function messageDock(wf, dis, s) {
     (wf.note ? '<p class="dock-note">' + esc(wf.note) + "</p>" : "") +
     '<form class="msg-row" data-action="say">' +
       '<input id="msg-input" class="input" type="text" maxlength="280" placeholder="Say it to their face…" autocomplete="off" aria-label="Your message"' + dis + " />" +
-      '<button class="btn btn-gold" type="submit"' + dis + ">Say it</button>" +
+      '<button class="btn btn-primary" type="submit"' + dis + ">Say it</button>" +
     "</form>" +
     (muzzled ? '<p class="micro muzzle-hint">Muzzled: only your first 8 words survive.</p>' : "") +
     "</div>";
@@ -599,8 +691,8 @@ function splitstealDock(st, d, dis) {
     leakHtml(st, d) +
     '<p class="dock-note">Negotiation is over. Your choice is private.</p>' +
     '<div class="choice-row">' +
-      '<button type="button" class="btn-choice btn-choice-green" data-action="decide" data-decision="SPLIT"' + dis + '><span class="choice-big">Split</span><span class="choice-sub">$50 each</span></button>' +
-      '<button type="button" class="btn-choice btn-choice-red" data-action="decide" data-decision="STEAL"' + dis + '><span class="choice-big">Steal</span><span class="choice-sub">it all</span></button>' +
+      '<button type="button" class="btn-choice btn-choice-good" data-action="decide" data-decision="SPLIT"' + dis + '><span class="choice-big">Split</span><span class="choice-sub">$50 each</span></button>' +
+      '<button type="button" class="btn-choice btn-choice-bad" data-action="decide" data-decision="STEAL"' + dis + '><span class="choice-big">Steal</span><span class="choice-sub">it all</span></button>' +
     "</div></div>";
 }
 
@@ -612,8 +704,8 @@ function prisonersDock(st, d, dis) {
     leakHtml(st, d) +
     '<p class="dock-note">Round ' + round + " of " + total + ". Choose in secret.</p>" +
     '<div class="choice-row">' +
-      '<button type="button" class="btn-choice btn-choice-green" data-action="decide" data-decision="COOPERATE"' + dis + '><span class="choice-big">Cooperate</span><span class="choice-sub">$30 each if they do too</span></button>' +
-      '<button type="button" class="btn-choice btn-choice-red" data-action="decide" data-decision="DEFECT"' + dis + '><span class="choice-big">Defect</span><span class="choice-sub">$50 if they don’t</span></button>' +
+      '<button type="button" class="btn-choice btn-choice-good" data-action="decide" data-decision="COOPERATE"' + dis + '><span class="choice-big">Cooperate</span><span class="choice-sub">$30 each if they do too</span></button>' +
+      '<button type="button" class="btn-choice btn-choice-bad" data-action="decide" data-decision="DEFECT"' + dis + '><span class="choice-big">Defect</span><span class="choice-sub">$50 if they don’t</span></button>' +
     "</div></div>";
 }
 
@@ -653,7 +745,7 @@ function offerDock(d, dis, s) {
     "</div></div>" +
     '<p class="readout" id="dock-readout">' + offerReadout(cur, max) + "</p>" +
     '<input id="dock-pitch" class="input" type="text" maxlength="140" placeholder="One line to sell it (optional)" autocomplete="off" aria-label="Your pitch"' + dis + " />" +
-    '<button type="button" class="btn btn-gold btn-lg" data-action="make-offer"' + dis + ">Make the offer</button>" +
+    '<button type="button" class="btn btn-primary btn-lg" data-action="make-offer"' + dis + ">Make the offer</button>" +
     "</div>";
 }
 function offerReadout(v, max) {
@@ -664,12 +756,12 @@ function respondDock(d, dis) {
   const offer = Number(d.offer) || 0;
   const pot = Number(d.pot) || 100;
   return '<div class="dock card" aria-live="polite">' +
-    '<div class="offer-big">They offer you <b class="green">' + money(offer) + "</b> of " + money(pot) +
+    '<div class="offer-big">They offer you <b class="pos">' + money(offer) + "</b> of " + money(pot) +
       '<span class="offer-keep">— they keep ' + money(pot - offer) + "</span></div>" +
     '<input id="dock-line" class="input" type="text" maxlength="140" placeholder="A line for the record (optional)" autocomplete="off" aria-label="Your line"' + dis + " />" +
     '<div class="choice-row">' +
-      '<button type="button" class="btn-choice btn-choice-green" data-action="decide" data-decision="ACCEPT"' + dis + '><span class="choice-big">Accept</span><span class="choice-sub">take the ' + money(offer) + "</span></button>" +
-      '<button type="button" class="btn-choice btn-choice-red" data-action="decide" data-decision="REJECT"' + dis + '><span class="choice-big">Reject</span><span class="choice-sub">burn it all</span></button>' +
+      '<button type="button" class="btn-choice btn-choice-good" data-action="decide" data-decision="ACCEPT"' + dis + '><span class="choice-big">Accept</span><span class="choice-sub">take the ' + money(offer) + "</span></button>" +
+      '<button type="button" class="btn-choice btn-choice-bad" data-action="decide" data-decision="REJECT"' + dis + '><span class="choice-big">Reject</span><span class="choice-sub">burn it all</span></button>' +
     "</div></div>";
 }
 
@@ -685,11 +777,11 @@ function sendDock(d, dis, s) {
       '<span class="rtick-end rtick-end-max" aria-hidden="true">' + money(max) + "</span>" +
     "</div></div>" +
     '<p class="readout" id="dock-readout">' + sendReadout(cur, mult) + "</p>" +
-    '<button type="button" class="btn btn-gold btn-lg" data-action="wire"' + dis + ">Wire it</button>" +
+    '<button type="button" class="btn btn-primary btn-lg" data-action="wire"' + dis + ">Wire it</button>" +
     "</div>";
 }
 function sendReadout(v, mult) {
-  return "Wire <b>" + money(v) + "</b> → lands as <b class=\"green\">" + money(v * mult) + "</b>";
+  return "Wire <b>" + money(v) + "</b> → lands as <b class=\"pos\">" + money(v * mult) + "</b>";
 }
 
 function returnDock(d, dis, s) {
@@ -710,11 +802,11 @@ function returnDock(d, dis, s) {
     "</div></div>" +
     '<p class="readout" id="dock-readout">' + returnReadout(cur, sent, pot) + "</p>" +
     '<input id="dock-line" class="input" type="text" maxlength="140" placeholder="A line to send with it (optional)" autocomplete="off" aria-label="Your line"' + dis + " />" +
-    '<button type="button" class="btn btn-gold btn-lg" data-action="send-back"' + dis + ">Send it back</button>" +
+    '<button type="button" class="btn btn-primary btn-lg" data-action="send-back"' + dis + ">Send it back</button>" +
     "</div>";
 }
 function returnReadout(v, sent, pot) {
-  const whole = sent > 0 && v >= sent ? ' · <b class="green">they’re made whole</b>' : "";
+  const whole = sent > 0 && v >= sent ? ' · <b class="pos">they’re made whole</b>' : "";
   return "Send back <b>" + money(v) + "</b> of " + money(pot) + whole;
 }
 
@@ -728,7 +820,7 @@ function revealHtml(st, s) {
   const payoffs = r.payoffs || [0, 0];
   const p0 = Number(payoffs[0]) || 0;
   const p1 = Number(payoffs[1]) || 0;
-  /* winner stays gold-bright; the loser's figure recedes; a tie keeps both gold */
+  /* the winner's figure holds full ink; the loser's recedes; a tie keeps both */
   const dim0 = p0 < p1 ? " dim" : "";
   const dim1 = p1 < p0 ? " dim" : "";
   const dis = s.inFlight ? " disabled" : "";
@@ -739,19 +831,18 @@ function revealHtml(st, s) {
       '<div class="payoff"><span class="payoff-who">' + esc(oppLabel) + '</span><span class="payoff-num' + dim1 + '" data-count="' + p1 + '">$0</span></div>' +
     "</div>" +
     '<article class="receipt' + (animate ? " receipt-anim" : "") + '">' +
-      '<span class="receipt-game">' + esc(gameName(rec.game || st.game)) + "</span>" +
-      '<div><span class="stamp stamp-' + cat + '">' + esc(rec.stamp || "SETTLED") + "</span></div>" +
+      impressionHtml(s.matchId, rec.game || st.game) +
+      '<div class="stamp-wrap"><span class="stamp stamp-' + cat + '">' + esc(rec.stamp || "SETTLED") + "</span></div>" +
       '<h3 class="receipt-headline">' + esc(rec.headline || "") + "</h3>" +
       (rec.detail ? '<p class="receipt-detail">' + esc(rec.detail) + "</p>" : "") +
       '<div class="receipt-rows">' + potRowHtml(rec.game || st.game) + (rec.players || []).map(receiptRowHtml).join("") + "</div>" +
       quotesHtml(rec, st.game) +
       '<div class="receipt-foot">Golden Arena · behavioral receipt</div>' +
-      serialHtml(s.matchId) +
     "</article>" +
     '<div class="reveal-actions">' +
-      '<button type="button" class="btn btn-gold" data-action="play-again"' + dis + ">" + (s.inFlight ? "Dealing…" : "Play again") + "</button>" +
-      '<button type="button" class="btn btn-ghost" data-action="rig-again"' + dis + ">Rig it differently</button>" +
-      '<a class="btn btn-ghost" href="#/board">See the Index</a>' +
+      '<button type="button" class="btn btn-primary" data-action="play-again"' + dis + ">" + (s.inFlight ? "Dealing…" : "Play again") + "</button>" +
+      '<button type="button" class="btn btn-quiet" data-action="rig-again"' + dis + ">Rig it differently</button>" +
+      '<a class="btn btn-quiet" href="#/board">See the Index</a>' +
     "</div></section>";
 }
 
@@ -783,9 +874,11 @@ async function renderWatch(params) {
   if (!watchState.models) watchState.models = new Set((cfg.models || []).map((m) => m.id));
 
   $view.innerHTML =
-    '<header class="view-head"><p class="kicker kicker-rule">The viewing gallery</p><h2><span class="foil">Machines only. You just watch.</span></h2></header>' +
+    runheadHtml("The viewing gallery") +
+    '<header class="view-head"><p class="kicker kicker-rule">The viewing gallery</p><h2>Machines only. You just watch.</h2></header>' +
     '<div id="watch-controls">' + watchControlsHtml() + "</div>" +
-    '<div id="watch-live"><div class="card empty">Reading the floor…</div></div>';
+    '<div id="watch-live"><div class="empty">Reading the floor…</div></div>' +
+    folioHtml("The viewing gallery");
   enterView();
   pollWatch(token);
 }
@@ -799,22 +892,22 @@ function watchControlsHtml() {
     '<label class="check"><input type="checkbox" data-model="' + esc(m.id) + '"' + (ws.models.has(m.id) ? " checked" : "") + " /><span>" + esc(m.label) + "</span></label>").join("");
   const powers = (cfg.powers || []).filter((p) => p.kind === "power");
   const handicaps = (cfg.powers || []).filter((p) => p.kind === "handicap");
-  return '<div class="card watch-card">' +
+  return '<div class="watch-card">' +
     '<h3 class="setup-label">The game</h3>' +
     '<div class="seg seg-slim" role="radiogroup" aria-label="Tournament game">' + games + "</div>" +
     '<h3 class="setup-label">The fighters <span class="setup-hint">pick at least two</span></h3>' +
     '<div class="checks">' + checks + "</div>" +
     '<h3 class="setup-label">The rig <span class="setup-hint">optional</span></h3>' +
     '<div class="rig-selects">' +
-      '<div class="rig-sel"><span class="rig-sel-label rig-sel-gold">Advantage</span>' +
+      '<div class="rig-sel"><span class="rig-sel-label rig-sel-adv">Advantage</span>' +
         selHtml("advM", cfg.models || [], ws.advM, "Advantaged model", "pick a model") + selHtml("advP", powers, ws.advP, "Superpower", "pick a power") + "</div>" +
-      '<div class="rig-sel"><span class="rig-sel-label rig-sel-rust">Handicap</span>' +
+      '<div class="rig-sel"><span class="rig-sel-label rig-sel-hc">Handicap</span>' +
         selHtml("hcM", cfg.models || [], ws.hcM, "Handicapped model", "pick a model") + selHtml("hcP", handicaps, ws.hcP, "Handicap", "pick a handicap") + "</div>" +
     "</div>" +
-    '<p class="micro">Rigged matches feed the corruption stat: how much nastier a model plays when the field tilts its way.</p>' +
+    '<p class="margin-note">Rigged matches feed the corruption figure: how much nastier a model plays once the field tilts its way.</p>' +
     '<div class="watch-actions">' +
-      '<button type="button" class="btn btn-gold btn-lg" data-action="watch-run"' + (ws.busy ? " disabled" : "") + ">" + (ws.busy ? "Dealing…" : "Run tournament") + "</button>" +
-      '<button type="button" class="btn btn-ghost" data-action="watch-reset">Reset</button>' +
+      '<button type="button" class="btn btn-primary btn-lg" data-action="watch-run"' + (ws.busy ? " disabled" : "") + ">" + (ws.busy ? "Dealing…" : "Run tournament") + "</button>" +
+      '<button type="button" class="btn btn-quiet" data-action="watch-reset">Reset</button>' +
     "</div></div>";
 }
 
@@ -846,7 +939,7 @@ async function pollWatch(token) {
     if (token !== viewToken) return;
     if (!watchState.data) {
       const live = document.getElementById("watch-live");
-      if (live) live.innerHTML = '<div class="card empty">Can’t reach the arena floor. Retrying…</div>';
+      if (live) live.innerHTML = '<div class="empty">Can’t reach the arena floor. Retrying…</div>';
     }
     scheduleWatch(token, 4000);
   }
@@ -865,7 +958,7 @@ function renderWatchLive() {
 
 function watchLiveHtml() {
   const d = watchState.data;
-  if (!d) return '<div class="card empty">Reading the floor…</div>';
+  if (!d) return '<div class="empty">Reading the floor…</div>';
   const matches = d.matches || [];
   let html = "";
   if (d.error) html += '<p class="watch-error">House trouble: ' + esc(String(d.error)) + "</p>";
@@ -878,7 +971,7 @@ function watchLiveHtml() {
     html += '<div class="progress-line done">' + matches.length + " match" + (matches.length === 1 ? "" : "es") + " on the card · " + esc(gameName(d.game)) + "</div>";
   }
   if (!d.running && !matches.length) {
-    html += '<div class="card empty-state"><div class="empty-art">◇ ◆ ◇</div>' +
+    html += '<div class="empty-state"><div class="empty-art">◇ ◆ ◇</div>' +
       "<h3>The floor is quiet</h3>" +
       "<p>Pick at least two fighters, rig the table if you’re feeling cruel, and run a tournament.</p></div>";
   } else if (matches.length) {
@@ -920,12 +1013,12 @@ function aiTranscriptHtml(st) {
 function watchMiniReceiptHtml(st) {
   const rec = st.result.receipt || {};
   return '<div class="mini-receipt mini-receipt-flat">' +
-    '<div class="mr-top">' + stampBadge(rec.stamp) + '<span class="mr-game">' + esc(gameName(rec.game || st.game)) + "</span></div>" +
+    impressionHtml(st.id, rec.game || st.game) +
+    '<div class="mr-top">' + stampBadge(rec.stamp) + "</div>" +
     '<p class="mr-head">' + esc(rec.headline || "") + "</p>" +
     (rec.detail ? '<p class="mr-detail">' + esc(rec.detail) + "</p>" : "") +
     '<div class="receipt-rows">' + potRowHtml(rec.game || st.game) + (rec.players || []).map(receiptRowHtml).join("") + "</div>" +
     quotesHtml(rec, st.game) +
-    serialHtml(st.id) +
     "</div>";
 }
 
@@ -990,23 +1083,26 @@ async function renderBoard() {
   if (token !== viewToken) return;
 
   $view.innerHTML =
-    '<header class="view-head"><p class="kicker kicker-rule">The Golden Arena</p><h2><span class="foil">Behavioral Index</span></h2>' +
+    runheadHtml("The Behavioral Index") +
+    '<header class="view-head"><p class="kicker kicker-rule">The catalogue</p><h2>Behavioral Index</h2>' +
     '<p class="dek">What the machines do when they think it’s just a game. Lab studies find frontier models more cooperative than humans — the Index tests what’s left of that when the field isn’t level.</p></header>' +
-    '<div id="board-body"><div class="card empty">Opening the ledger…</div></div>';
+    '<div id="board-body"><div class="empty">Opening the ledger…</div></div>' +
+    folioHtml("The Behavioral Index");
   enterView();
 
   try {
     const b = await api("/api/board");
     if (token !== viewToken) return;
+    noteRecords(b);
     const body = document.getElementById("board-body");
     if (body) body.innerHTML = boardHtml(b);
   } catch (e) {
     if (token !== viewToken) return;
     const body = document.getElementById("board-body");
     if (body) {
-      body.innerHTML = '<div class="card empty-state"><div class="empty-art">◆</div>' +
+      body.innerHTML = '<div class="empty-state"><div class="empty-art">◆</div>' +
         "<h3>The ledger wouldn’t open</h3><p>The record keeper is away from the desk.</p>" +
-        '<button type="button" class="btn btn-gold" data-action="reload-view">Try again</button></div>';
+        '<button type="button" class="btn btn-primary" data-action="reload-view">Try again</button></div>';
     }
   }
 }
@@ -1020,10 +1116,10 @@ function boardHtml(b) {
       (b.totals.liveMatches || 0) + " live · " + (b.totals.demoMatches || 0) + " scripted</p>";
   }
   if (!rows.length) {
-    html += '<div class="card empty-state"><div class="empty-art">◇ ◆ ◇</div>' +
+    html += '<div class="empty-state"><div class="empty-art">◇ ◆ ◇</div>' +
       "<h3>No one on the record</h3>" +
       "<p>The Index writes itself from play. Sit down yourself, or run the machines against each other.</p>" +
-      '<div class="empty-cta"><a class="btn btn-gold" href="#/play">Take a seat</a><a class="btn btn-ghost" href="#/watch">Run a tournament</a></div></div>';
+      '<div class="empty-cta"><a class="btn btn-primary" href="#/play">Take a seat</a><a class="btn btn-quiet" href="#/watch">Run a tournament</a></div></div>';
   } else {
     html += '<div class="idx" role="table" aria-label="The Behavioral Index">' +
       '<div class="idx-head" role="row">' +
@@ -1036,15 +1132,22 @@ function boardHtml(b) {
   }
   const receipts = (b && b.recentReceipts) || [];
   if (receipts.length) {
-    html += '<section class="home-sec"><h2 class="sec-label">Recent receipts</h2><div class="receipts-grid">' +
-      receipts.slice(0, 8).map(miniReceiptCardHtml).join("") + "</div></section>";
+    html += '<section class="home-sec sheet"><div><h2 class="sec-label">Recent impressions</h2><div class="receipts-grid">' +
+      receipts.slice(0, 8).map(miniReceiptCardHtml).join("") + "</div></div>" +
+      '<aside class="margin-note"><span class="margin-note-h">Method, honestly</span>' +
+      "Promise-breaking is detected by a labelled heuristic — a pattern-match on open-court promises — not a judge. " +
+      "Small samples are small: every axis carries its <b>n</b>, and axes hide until they have data. No fake precision." +
+      (CONFIG && CONFIG.budget && CONFIG.budget.exhausted
+        ? '<p class="method-budget">Daily live-model budget spent; matches run scripted until tomorrow.</p>' : "") +
+      "</aside></section>";
+  } else {
+    html += '<footer class="method">' +
+      "<p><b>Method, honestly:</b> promise-breaking is detected by a labelled heuristic — a pattern-match on open-court promises — not a judge. " +
+      "Small samples are small: every axis carries its n, and axes hide until they have data — no fake precision.</p>" +
+      (CONFIG && CONFIG.budget && CONFIG.budget.exhausted
+        ? '<p class="method-budget">Daily live-model budget spent; matches run scripted until tomorrow.</p>' : "") +
+      "</footer>";
   }
-  html += '<footer class="method card">' +
-    "<p><b>Method, honestly:</b> promise-breaking is detected by a labelled heuristic — a pattern-match on open-court promises — not a judge. " +
-    "Small samples are small: every axis carries its n, and axes hide until they have data — no fake precision.</p>" +
-    (CONFIG && CONFIG.budget && CONFIG.budget.exhausted
-      ? '<p class="method-budget">Daily live-model budget spent; matches run scripted until tomorrow.</p>' : "") +
-    "</footer>";
   return html;
 }
 
@@ -1201,4 +1304,7 @@ document.addEventListener("change", (e) => {
 window.addEventListener("hashchange", route);
 window.addEventListener("unhandledrejection", (e) => { e.preventDefault(); });
 ensureConfig().catch(() => { /* views retry on their own */ });
+/* the running head and the folio carry the record count on EVERY view, so
+   the count is fetched once at boot rather than per view */
+api("/api/board").then(noteRecords).catch(() => { /* furniture shows Nº — */ });
 route();

@@ -1,25 +1,22 @@
 /* ═════════════════════════════════════════════════════════════════════════
-   GOLDEN ARENA · DESIGN TOKENS · v1
+   GOLDEN ARENA · DESIGN TOKENS · v3 — "the archive"
    ─────────────────────────────────────────────────────────────────────────
-   The aesthetic: "game-show noir". The vault at midnight — one warm light
-   over a card table. Near-black warm elevations, gold-foil display type,
-   cream ink, and exactly two accent hues: SPLIT green and STEAL red
-   (handicaps use the tarnished end of the red family: rust).
+   Golden Arena is not a casino. It is an archive: a printed behavioural
+   journal. Cream stock, black ink, one oxblood stamp.
 
-   THE SYSTEM
-   · Color        --bg-0/-1/-2 elevations · --ink/-muted/-faint · gold
-                  family (+foil gradient pair) · --green · --red · --rust ·
-                  --line hairlines · translucent overlays (--*-glass, --ink-*)
-   · Type         --font-display (engraved serif) · --font-body ·
-                  --font-mono (money) · --font-stamp (rubber stamp) ·
-                  scale --fs-xs → --fs-hero, responsive via clamp()
-   · Space        --sp-1 → --sp-8 on a 4px base (4·8·12·16·24·32·48·64)
-   · Radii        --r-sm/-md/-lg/-xl/-pill
-   · Shadow       --shadow-1/-2 depth · --glow-gold/-green/-red (+soft)
-   · Motion       --t-fast/-med/-slow · --ease-out · --ease-snap (stamps)
-   · Z            --z-nav · --z-toast
-   Every component in style.css consumes ONLY these tokens — restyle the
-   whole arena by editing this one file.
+   TWO REGISTERS, ONE SEMANTIC VOCABULARY
+   · THE ARCHIVE (:root)            light, printed cream paper. Home, the
+                                    Index, the rules, watch, every receipt.
+   · THE ROOM   (.register-room)    dark, one overhead pool. Live match only.
+
+   The registers hold RAW palettes. Everything below the SEMANTIC LAYER is
+   what components are allowed to touch — `--surface-*`, `--text-*`, `--rule`,
+   `--sig-*`, `--foil-*`. .register-room remaps those same names, so no
+   component ever branches on palette. Entering a match dims the lights;
+   finishing one prints the record back onto paper.
+
+   THE FOIL RULE. Gold survives as a printed gold hairline and on the
+   wordmark. It never fills a button, never becomes a gradient on a headline.
    ═════════════════════════════════════════════════════════════════════════ */
 
 /* ── self-hosted faces (public/fonts — zero runtime external requests) ──── */
@@ -37,6 +34,14 @@
   font-display: swap;
   src: url("fonts/playfair-display-latin-700italic.woff2") format("woff2");
 }
+/* Archivo ships as one variable latin file covering the 400–500 body range */
+@font-face {
+  font-family: "Archivo";
+  font-style: normal;
+  font-weight: 400 500;
+  font-display: swap;
+  src: url("fonts/archivo-latin-400-500.woff2") format("woff2");
+}
 @font-face {
   font-family: "Archivo Black";
   font-style: normal;
@@ -46,114 +51,165 @@
 }
 
 :root {
-  /* ── color · elevations (warm near-blacks, felt to brass) ─────────────── */
-  --bg-0: #0d0a07;                 /* the room */
-  --bg-1: #16110b;                 /* the table */
-  --bg-2: #201911;                 /* raised cards, docks */
-  --bg-3: #2a2117;                 /* hover / pressed surfaces */
+  /* ═══ RAW · THE ARCHIVE (light register) ═══════════════════════════════ */
+  --paper-0: #F2ECE0;              /* the page */
+  --paper-1: #E9E1D2;              /* inset cards, table rows */
+  --paper-2: #DED4C2;              /* wells, quoted matter */
+  --ink-0:   #17130E;              /* body ink            15.71:1 on paper-0 */
+  --ink-1:   #4A4238;              /* secondary            8.39:1 on paper-0 */
+  --ink-2:   #5F5647;              /* captions, folio      6.14:1 on paper-0 */
+  /* ⚠ --ink-2 is DARKENED from the DESIGN.md value #7A7061, which measured
+     4.13:1 on paper-0 / 3.31:1 on paper-2 and failed the 4.5:1 body floor
+     DESIGN §9 asked us to check rather than assume. #5F5647 clears 4.5:1 on
+     all three paper stocks (6.14 / 5.56 / 4.92) and keeps the warm grey. */
 
-  /* ── color · ink (cream on felt) ──────────────────────────────────────── */
-  --ink:        #f0e7d3;
-  --ink-muted:  #a89a80;
-  --ink-faint:  #7d715c;
-  --ink-04: rgba(240, 231, 211, .04);
-  --ink-08: rgba(240, 231, 211, .08);
-  --ink-15: rgba(240, 231, 211, .15);
+  /* ═══ RAW · THE ROOM (dark register, live match only) ══════════════════ */
+  --room-0:     #14100C;
+  --room-1:     #1D1811;
+  --room-2:     #262019;
+  --room-ink:   #EFE7D8;           /* 15.41:1 on room-0 */
+  --room-ink-2: #A79B87;           /*  6.93:1 on room-0 · 5.89:1 on room-2 */
 
-  /* ── color · gold (the house's metal) ─────────────────────────────────── */
-  --gold:        #d2ab5a;
-  --gold-bright: #f2d98c;
-  --gold-deep:   #8a6a25;
-  --gold-08: rgba(210, 171, 90, .08);
-  --gold-14: rgba(210, 171, 90, .14);
-  --gold-25: rgba(210, 171, 90, .25);
-  /* gradient pair + the full foil ramp for clipped headline text */
-  --gold-grad-a: #f7e7b2;
-  --gold-grad-b: #a97e28;
-  --gold-foil: linear-gradient(168deg,
-      var(--gold-grad-a) 0%, #e9c56d 26%, #b58b2e 50%,
-      #f3dc96 72%, var(--gold-grad-b) 100%);
-  --btn-gold-grad: linear-gradient(180deg, #ecd08a 0%, var(--gold) 42%, #b3873a 100%);
+  /* ═══ RAW · ACCENTS · one family each, both registers ══════════════════ */
+  --oxblood:        #8E2B20;       /* betrayal, breach, the stamp — on paper */
+  --oxblood-lift:   #D46654;       /* the same signal on near-black */
+  --verdigris:      #2E5A46;       /* cooperation, the honoured deal */
+  --verdigris-lift: #5A9A79;
+  /* ⚠ the two -lift values are LIFTED from DESIGN.md (#A8382B / #4E8A6C),
+     which measured 2.51–2.94:1 and 3.97–4.67:1 on the room stocks. */
 
-  /* ── color · the two accents ──────────────────────────────────────────── */
-  --green:        #3cb371;         /* SPLIT · cooperate */
-  --green-bright: #6fe0a1;
-  --green-10: rgba(60, 179, 113, .12);
-  --green-30: rgba(60, 179, 113, .34);
-  --red:          #d84a35;         /* STEAL · betray */
-  --red-bright:   #ff7a5c;
-  --red-10: rgba(216, 74, 53, .12);
-  --red-30: rgba(216, 74, 53, .38);
-  --rust:         #b26744;         /* tarnished red — handicaps */
-  --rust-12: rgba(178, 103, 68, .14);
-  --rust-45: rgba(178, 103, 68, .5);
+  /* foil ramp — printed gold. Two ramps: deep for cream, bright for black.
+     Every stop of the ARCHIVE ramp clears 3:1 on paper-0 because the ramp
+     is clipped through the wordmark, which is large text and must read. */
+  --foil-hair:  #B08A3E;           /* hairline rules + marks only, never text */
+  --foil-1: #9A762D;  /* 3.57:1 */  --foil-2: #7A5D22;  /* 5.22:1 */
+  --foil-3: #A07B30;  /* 3.32:1 */  --foil-4: #6F5420;  /* 6.02:1 */
+  --foil-5: #5A431A;  /* 7.92:1 */
 
-  /* ── color · hairlines, overlays ──────────────────────────────────────── */
-  --line:        rgba(210, 171, 90, .16);
-  --line-strong: rgba(210, 171, 90, .38);
-  --scrim: rgba(13, 10, 7, .88);
-  --page-glow:
-      radial-gradient(58% 34% at 50% -4%, rgba(210, 171, 90, .14), transparent 70%),
-      radial-gradient(120% 90% at 50% 118%, rgba(0, 0, 0, .55), transparent 60%);
-
-  /* ── type · families ──────────────────────────────────────────────────── */
+  /* ═══ TYPE ════════════════════════════════════════════════════════════ */
   --font-display: "Playfair Display", Didot, "Bodoni MT", Palatino,
                   "Palatino Linotype", Georgia, "Times New Roman", serif;
-  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-               Helvetica, Arial, sans-serif;
+  --font-body: "Archivo", -apple-system, BlinkMacSystemFont, "Segoe UI",
+               Roboto, Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, Menlo,
                monospace;
   --font-stamp: "Archivo Black", Impact, Haettenschweiler,
                 "Franklin Gothic Bold", "Arial Black", sans-serif;
 
-  /* ── type · scale (clamped, 380px → 1200px) ───────────────────────────── */
-  --fs-xs:   0.72rem;
-  --fs-sm:   0.86rem;
+  --fs-xs:   0.7rem;
+  --fs-sm:   0.85rem;
   --fs-md:   1rem;
-  --fs-lg:   clamp(1.08rem, 1rem + 0.4vw, 1.3rem);
-  --fs-xl:   clamp(1.35rem, 1.15rem + 1vw, 1.9rem);
-  --fs-2xl:  clamp(1.75rem, 1.35rem + 2vw, 2.7rem);
-  --fs-hero: clamp(2.5rem, 1.7rem + 4.2vw, 4.6rem);
-  --track-label: 0.18em;           /* small-caps label tracking */
-  --track-wide:  0.3em;            /* kicker tracking */
+  --fs-lg:   clamp(1.06rem, 1rem + 0.3vw, 1.22rem);
+  --fs-xl:   clamp(1.3rem, 1.12rem + 0.9vw, 1.75rem);
+  --fs-2xl:  clamp(1.7rem, 1.3rem + 1.9vw, 2.5rem);
+  --fs-hero: clamp(2.35rem, 1.6rem + 3.9vw, 4.2rem);
+  /* numerals are a hero element — the figure is the point */
+  --fs-figure: clamp(2.1rem, 1.3rem + 3.4vw, 3.5rem);
+  --track-label: 0.16em;
+  --track-wide:  0.28em;
+  --measure: 68ch;                 /* prose measure */
 
-  /* ── space · 4px base ─────────────────────────────────────────────────── */
-  --sp-1: 4px;
-  --sp-2: 8px;
-  --sp-3: 12px;
-  --sp-4: 16px;
-  --sp-5: 24px;
-  --sp-6: 32px;
-  --sp-7: 48px;
-  --sp-8: 64px;
-  --container: 1080px;
+  /* ═══ SPACE · 4px base, headings snap to 8 ════════════════════════════ */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 24px; --sp-6: 32px; --sp-7: 48px; --sp-8: 64px;
+  --container: 1080px;             /* tables may run this wide */
+  --margin-col: 214px;             /* the marginalia column */
 
-  /* ── radii ────────────────────────────────────────────────────────────── */
-  --r-sm: 4px;
-  --r-md: 8px;
-  --r-lg: 14px;
-  --r-xl: 20px;
+  /* ═══ RADII · 2px. Pills survive only for status chips ════════════════ */
+  --r: 2px;
   --r-pill: 999px;
 
-  /* ── shadow & glow ────────────────────────────────────────────────────── */
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, .5), 0 5px 16px rgba(0, 0, 0, .35);
-  --shadow-2: 0 2px 6px rgba(0, 0, 0, .5), 0 16px 44px rgba(0, 0, 0, .5);
-  --glow-gold:      0 0 0 1px var(--gold-25), 0 0 26px rgba(210, 171, 90, .22);
-  --glow-gold-soft: 0 0 18px rgba(210, 171, 90, .16);
-  --glow-green:     0 0 0 1px var(--green-30), 0 0 26px rgba(60, 179, 113, .25);
-  --glow-green-soft: 0 0 16px rgba(60, 179, 113, .18);
-  --glow-red:       0 0 0 1px var(--red-30), 0 0 26px rgba(216, 74, 53, .25);
-  --glow-red-soft:  0 0 16px rgba(216, 74, 53, .18);
-  --ring: 0 0 0 2px var(--bg-0), 0 0 0 4px var(--gold);
-
-  /* ── motion ───────────────────────────────────────────────────────────── */
-  --t-fast: 140ms;
-  --t-med:  240ms;
-  --t-slow: 360ms;
+  /* ═══ MOTION · near-silence ═══════════════════════════════════════════ */
+  --t-fast: 110ms;
+  --t-med:  200ms;
+  --t-page: 120ms;                 /* page changes: opacity only, no slide */
+  --t-register: 560ms;             /* lights down · print to paper */
   --ease-out:  cubic-bezier(.22, .9, .28, 1);
-  --ease-snap: cubic-bezier(.3, 1.5, .45, 1);   /* stamp slam, chip pops */
+  --ease-snap: cubic-bezier(.3, 1.5, .45, 1);   /* the stamp, and only that */
 
-  /* ── z-index ──────────────────────────────────────────────────────────── */
   --z-nav:   100;
   --z-toast: 200;
+
+  /* ═════════════════════════════════════════════════════════════════════
+     SEMANTIC LAYER — the only names components may consume.
+     .register-room remaps every one of these below.
+     ═════════════════════════════════════════════════════════════════════ */
+  --surface-page:  var(--paper-0);
+  --surface-inset: var(--paper-1);
+  --surface-well:  var(--paper-2);
+  --surface-invert: var(--ink-0);           /* fill that inverts the text */
+  --text-on-invert: var(--paper-0);
+
+  --text-primary:   var(--ink-0);
+  --text-secondary: var(--ink-1);
+  --text-tertiary:  var(--ink-2);
+
+  --rule:        rgba(23, 19, 14, .14);     /* hairlines */
+  --rule-strong: rgba(23, 19, 14, .30);
+  --rule-faint:  rgba(23, 19, 14, .07);
+
+  --foil:      var(--foil-hair);            /* printed gold hairline + marks */
+  --foil-rule: rgba(176, 138, 62, .55);
+  --foil-ramp: linear-gradient(168deg,
+      var(--foil-1) 0%, var(--foil-2) 26%, var(--foil-3) 50%,
+      var(--foil-4) 72%, var(--foil-5) 100%);
+
+  --sig-bad:       var(--oxblood);
+  --sig-bad-rule:  rgba(142, 43, 32, .38);
+  --sig-bad-wash:  rgba(142, 43, 32, .10);
+  --sig-good:      var(--verdigris);
+  --sig-good-rule: rgba(46, 90, 70, .34);
+  --sig-good-wash: rgba(46, 90, 70, .10);
+
+  --focus: var(--ink-0);
+  --scrim: rgba(242, 236, 224, .90);
+  --shadow-paper: 0 1px 1px rgba(23, 19, 14, .05),
+                  0 10px 24px -14px rgba(23, 19, 14, .30);
+
+  /* the only textural indulgence: a faint paper grain. Nothing else. */
+  --page-texture:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='170' height='170'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .09 0 0 0 0 .075 0 0 0 0 .055 0 0 0 .06 0'/%3E%3C/filter%3E%3Crect width='170' height='170' filter='url(%23g)'/%3E%3C/svg%3E");
+  --page-texture-size: 170px 170px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   THE ROOM — the same semantic names, remapped. Live match only.
+   ═══════════════════════════════════════════════════════════════════════ */
+.register-room {
+  --surface-page:  var(--room-0);
+  --surface-inset: var(--room-1);
+  --surface-well:  var(--room-2);
+  --surface-invert: var(--room-ink);
+  --text-on-invert: var(--room-0);
+
+  --text-primary:   var(--room-ink);
+  --text-secondary: var(--room-ink-2);
+  --text-tertiary:  var(--room-ink-2);
+
+  --rule:        rgba(239, 231, 216, .13);
+  --rule-strong: rgba(239, 231, 216, .28);
+  --rule-faint:  rgba(239, 231, 216, .07);
+
+  --foil:      #C6A055;
+  --foil-rule: rgba(198, 160, 85, .42);
+  --foil-1: #F0DFAE;  --foil-2: #DCBB72;  --foil-3: #B58B2E;
+  --foil-4: #EBD292;  --foil-5: #A97E28;
+
+  --sig-bad:       var(--oxblood-lift);
+  --sig-bad-rule:  rgba(212, 102, 84, .42);
+  --sig-bad-wash:  rgba(142, 43, 32, .18);
+  --sig-good:      var(--verdigris-lift);
+  --sig-good-rule: rgba(90, 154, 121, .40);
+  --sig-good-wash: rgba(46, 90, 70, .18);
+
+  --focus: var(--foil-2);
+  --scrim: rgba(20, 16, 12, .90);
+  --shadow-paper: 0 2px 6px rgba(0, 0, 0, .45),
+                  0 22px 48px -20px rgba(0, 0, 0, .8);
+
+  /* no grain in the room — one overhead pool instead */
+  --page-texture:
+    radial-gradient(66% 42% at 50% -8%, rgba(240, 231, 211, .085), transparent 68%),
+    radial-gradient(130% 92% at 50% 118%, rgba(0, 0, 0, .55), transparent 60%);
+  --page-texture-size: auto;
 }
