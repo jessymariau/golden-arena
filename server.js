@@ -7,9 +7,9 @@ import path from "node:path";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
-import { liveMode, budgetState, DEFAULT_MODELS } from "./lib/llm.js";
+import { liveMode, hasServerKey, budgetState, verifyKey, scrub, DEFAULT_MODELS } from "./lib/llm.js";
 import { POWERS, validPowers } from "./lib/powers.js";
-import { GAMES, gameMeta, createMatch, advance, humanInput } from "./lib/games.js";
+import { GAMES, gameMeta, createMatch, advance, humanInput, setMatchKey } from "./lib/games.js";
 import { initStore, records, addRecord, storageMode } from "./lib/storage.js";
 import { computeBoard } from "./lib/bench.js";
 
@@ -22,8 +22,25 @@ app.use(express.static(path.join(__dirname, "public")));
 
 const wrap = (fn) => (req, res) =>
   Promise.resolve(fn(req, res)).catch((err) => {
-    if (!res.headersSent) res.status(500).json({ error: err.message });
+    if (!res.headersSent) res.status(500).json({ error: scrub(err.message) });
   });
+
+// ---------------------------------------------------------------------------
+// BRING YOUR OWN KEY
+// ---------------------------------------------------------------------------
+// A visitor may hand us their own OpenRouter key so they can play real models
+// at their own expense. It arrives in a header on the request that needs it,
+// is read fresh EVERY time (a client that stops sending it stops playing live),
+// and is never written to disk, to a log, to a record or to any response.
+// The one exception is the detached tournament runner, which must hold it for
+// the length of the run — and drops it in a finally.
+const KEY_SHAPE = /^[\x21-\x7E]{16,256}$/; // printable ASCII, no spaces
+function visitorKey(req) {
+  const raw = req.get("X-OpenRouter-Key");
+  if (typeof raw !== "string") return null;
+  const k = raw.trim();
+  return KEY_SHAPE.test(k) ? k : null;
+}
 
 // ---------------------------------------------------------------------------
 // sessions + per-IP rate limits
@@ -57,16 +74,19 @@ setInterval(() => {
   for (const [id, m] of sessions) if (now - (m.touchedAt || m.createdAt) > SESSION_TTL_MS) sessions.delete(id);
   for (const [ip, ts] of lastMatchAt) if (now - ts > SESSION_TTL_MS) lastMatchAt.delete(ip);
   for (const [ip, ts] of lastTournamentAt) if (now - ts > SESSION_TTL_MS) lastTournamentAt.delete(ip);
+  for (const [ip, h] of verifyHits) if (now > h.resetAt) verifyHits.delete(ip);
 }, 5 * 60 * 1000).unref();
 
 // ---------------------------------------------------------------------------
 // shared shapes
 // ---------------------------------------------------------------------------
 // pendingDecisions stays server-side; the only sanctioned leak of a committed
-// choice is waitingFor.decision.seen, which games.js controls.
+// choice is waitingFor.decision.seen, which games.js controls. Built field by
+// field — match.apiKey is non-enumerable and is never named here.
 function publicState(match) {
   return {
     id: match.id,
+    keyError: match.keyError || null, // scrubbed upstream in lib/llm.js
     game: match.game,
     done: match.done,
     liveMode: match.live,
@@ -125,6 +145,7 @@ async function maybeRecord(match) {
 app.get("/api/config", (req, res) => {
   res.json({
     liveMode: liveMode() && !budgetState().exhausted,
+    serverLive: hasServerKey(), // the house pays; otherwise a visitor may bring a key
     budget: budgetState(),
     models: DEFAULT_MODELS,
     games: gameMeta(),
@@ -139,6 +160,25 @@ app.get("/api/board", (req, res) => {
     seeded: records().some((r) => String(r.id).startsWith("seed")),
   });
 });
+
+// ---------------------------------------------------------------------------
+// key check — "is this key any good?" without spending anything on it
+// ---------------------------------------------------------------------------
+const VERIFY_PER_MIN = 6;
+const verifyHits = new Map(); // ip -> { n, resetAt }
+
+app.post("/api/verify-key", wrap(async (req, res) => {
+  const ip = ipOf(req);
+  const now = Date.now();
+  const hit = verifyHits.get(ip);
+  if (!hit || now > hit.resetAt) verifyHits.set(ip, { n: 1, resetAt: now + 60_000 });
+  else if (hit.n >= VERIFY_PER_MIN) return res.status(429).json({ ok: false, error: "Too many checks. Give it a minute." });
+  else hit.n += 1;
+
+  const key = visitorKey(req);
+  if (!key) return res.status(400).json({ ok: false, error: "No key on that request. Paste one first." });
+  res.json(await verifyKey(key)); // never logged, never echoed
+}));
 
 // ---------------------------------------------------------------------------
 // human vs model matches
@@ -159,7 +199,9 @@ app.post("/api/match", wrap(async (req, res) => {
     { label: "You", isHuman: true, powers: validPowers(powers?.human) },
     { modelId: opponent.id, label: opponent.label, powers: validPowers(powers?.ai) },
   ];
-  const match = createMatch({ game, players, live: liveMode() });
+  const apiKey = visitorKey(req);
+  // Either key path means real models spoke — the Index must record it as live.
+  const match = createMatch({ game, players, live: liveMode() || Boolean(apiKey), apiKey });
   wireDossier(match);
   await advance(match);
   await maybeRecord(match);
@@ -176,10 +218,14 @@ app.get("/api/match/:id", (req, res) => {
 app.post("/api/match/:id/input", wrap(async (req, res) => {
   const match = getSession(req.params.id);
   if (!match) return res.status(404).json({ error: "match not found" });
+  // Re-read from THIS request rather than trusting the stored copy.
+  setMatchKey(match, visitorKey(req));
+  if (match.apiKey) match.live = true;
+  match.keyError = null;
   try {
     humanInput(match, req.body || {});
   } catch (err) {
-    return res.status(400).json({ error: err.message });
+    return res.status(400).json({ error: scrub(err.message) });
   }
   await advance(match);
   await maybeRecord(match);
@@ -233,26 +279,36 @@ app.post("/api/tournament", wrap(async (req, res) => {
   tournament = { running: true, game, progress: { done: 0, total: pairs.length }, matches: [], error: null };
   const state = tournament;
 
+  // The one place a visitor's key outlives a request. It is held in this
+  // closure only — never on `tournament`, which is served to every client —
+  // and the finally drops it whether the run finishes, is superseded or throws.
+  let runKey = visitorKey(req);
+  const live = liveMode() || Boolean(runKey);
+
   (async () => {
-    for (const [a, b] of pairs) {
-      if (state !== tournament) return; // reset while running: stop burning calls
-      try {
-        const players = [
-          { modelId: a.id, label: a.label, powers: [] },
-          { modelId: b.id, label: b.label, powers: [] },
-        ];
-        applyRig(players, rig);
-        const match = createMatch({ game, players, live: liveMode() });
-        wireDossier(match);
-        await runToCompletion(match);
-        state.matches.push(publicState(match));
-        if (match.done && match.record) await addRecord(match.record);
-      } catch (err) {
-        state.error = err.message;
+    try {
+      for (const [a, b] of pairs) {
+        if (state !== tournament) return; // reset while running: stop burning calls
+        try {
+          const players = [
+            { modelId: a.id, label: a.label, powers: [] },
+            { modelId: b.id, label: b.label, powers: [] },
+          ];
+          applyRig(players, rig);
+          const match = createMatch({ game, players, live, apiKey: runKey });
+          wireDossier(match);
+          await runToCompletion(match);
+          state.matches.push(publicState(match));
+          if (match.done && match.record) await addRecord(match.record);
+        } catch (err) {
+          state.error = scrub(err.message);
+        }
+        state.progress.done += 1;
       }
-      state.progress.done += 1;
+    } finally {
+      runKey = null;
+      state.running = false;
     }
-    state.running = false;
   })();
 
   res.json(tournament);
@@ -270,7 +326,7 @@ app.post("/api/tournament/reset", (req, res) => {
 // JSON errors for bad bodies and anything a route lets escape.
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
-  res.status(err.status || 500).json({ error: err.message || "server error" });
+  res.status(err.status || 500).json({ error: scrub(err.message || "server error") });
 });
 
 // ---------------------------------------------------------------------------
@@ -318,9 +374,12 @@ async function loadBakedSeeds() {
 
 // Top-up rather than all-or-nothing: an interrupted boot (killed process,
 // redeploy mid-seed) resumes where it left off instead of never finishing.
+// Seeding follows the SERVER key, not "is anyone playing live". Our public
+// deployment carries no key — visitors bring their own — so it must still ship
+// a populated, clearly-labelled Index rather than an empty board.
 async function seedIfEmpty() {
-  if (liveMode()) {
-    console.log("Live mode: skipping demo seeding; the board fills with real matches.");
+  if (hasServerKey()) {
+    console.log("Server key present: skipping demo seeding; the board fills with real matches.");
     return;
   }
   if (!records().some((r) => String(r.id).startsWith("seed"))) {
@@ -361,6 +420,6 @@ async function seedIfEmpty() {
 // ---------------------------------------------------------------------------
 await initStore();
 app.listen(PORT, () => {
-  console.log(`Golden Arena on :${PORT} (${liveMode() ? "LIVE" : "DEMO"} mode, storage=${storageMode()})`);
+  console.log(`Golden Arena on :${PORT} (${hasServerKey() ? "LIVE on the server key" : "DEMO — visitors may bring their own key"}, storage=${storageMode()})`);
   seedIfEmpty().catch((err) => console.warn(`Seeding failed: ${err.message}`));
 });

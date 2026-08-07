@@ -212,7 +212,9 @@ img { max-width: 100%; }
 .nav-link:hover { color: var(--text-primary); }
 .nav-link.active { color: var(--text-primary); border-bottom-color: var(--foil); }
 
-/* status chips — the one place a pill survives */
+/* status chips — the one place a pill survives.
+   The mode pill is also the door to the key panel, so it is a real button:
+   pointer, hover, and the global focus ring. */
 .pill {
   display: inline-flex; align-items: center; gap: var(--sp-2);
   font-size: var(--fs-xs); font-weight: 500;
@@ -222,11 +224,17 @@ img { max-width: 100%; }
   border: 1px solid var(--rule-strong);
   color: var(--text-tertiary);
   cursor: default;
+  white-space: nowrap;
 }
+button.pill { cursor: pointer; transition: border-color var(--t-fast) var(--ease-out); }
+button.pill:hover { border-color: currentColor; }
 .pill-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .pill-live { color: var(--sig-good); border-color: var(--sig-good-rule); }
 .pill-live .pill-dot { animation: pillPulse 2.4s infinite; }
-.pill-demo { color: var(--text-secondary); border-color: var(--rule-strong); }
+/* DEMO reads amber the archive's way: a foil hairline and a foil mark. Foil
+   never becomes type here — the label stays ink (tokens.css, the foil rule). */
+.pill-demo { color: var(--text-secondary); border-color: var(--foil-rule); }
+.pill-demo .pill-dot { background: var(--foil); }
 @keyframes pillPulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
 
 /* ── buttons: ink outline, 2px radius, foil hairline on the primary ───── */
@@ -990,10 +998,133 @@ button.chip:hover:not(:disabled) { border-color: var(--text-secondary); color: v
   animation: toastIn var(--t-med) var(--ease-out) both;
   transition: opacity var(--t-med) var(--ease-out);
 }
+.toast-btn {
+  margin-left: var(--sp-3);
+  padding: 2px var(--sp-3);
+  border: 1px solid currentColor;
+  border-radius: var(--r);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  opacity: .85;
+}
+.toast-btn:hover { opacity: 1; }
 .toast-error { box-shadow: inset 3px 0 0 var(--oxblood-lift), var(--shadow-paper); }
 .toast-ok { box-shadow: inset 3px 0 0 var(--verdigris-lift), var(--shadow-paper); }
 .toast-out { opacity: 0; }
 @keyframes toastIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* ── the key panel ─────────────────────────────────────────────────────
+   A leaf slipped into whichever register you are standing in — it inherits
+   the semantic tokens, so it prints on cream in the archive and sits under
+   the lamp in the room, without branching on either. */
+body.no-scroll { overflow: hidden; }
+
+.keydlg-scrim {
+  position: fixed; inset: 0;
+  z-index: var(--z-toast);
+  background: var(--scrim);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  animation: pageIn var(--t-med) linear both;
+}
+.keydlg {
+  position: fixed;
+  z-index: calc(var(--z-toast) + 1);
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(580px, calc(100vw - 2 * var(--sp-4)));
+  max-height: calc(100dvh - 2 * var(--sp-5));
+  overflow: auto;
+  padding: var(--sp-6);
+  background: var(--surface-inset);
+  border: 1px solid var(--rule-strong);
+  border-top: 2px solid var(--foil-rule);   /* the gilt edge of the leaf */
+  border-radius: var(--r);
+  box-shadow: var(--shadow-paper);
+  animation: pageIn var(--t-med) linear both;
+}
+.keydlg-x {
+  position: absolute; top: var(--sp-3); right: var(--sp-3);
+  width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--r);
+  font-size: var(--fs-sm);
+  color: var(--text-tertiary);
+  transition: color var(--t-fast) var(--ease-out);
+}
+.keydlg-x:hover { color: var(--text-primary); }
+.keydlg-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
+  margin: var(--sp-3) 0 var(--sp-3);
+  padding-right: var(--sp-6);
+}
+.keydlg-lede { color: var(--text-secondary); font-size: var(--fs-sm); }
+.keydlg-facts {
+  margin: var(--sp-4) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+.keydlg-facts li {
+  position: relative;
+  padding: var(--sp-1) 0 var(--sp-1) var(--sp-5);
+  border-top: 1px solid var(--rule-faint);
+}
+.keydlg-facts li:first-child { border-top: 0; }
+.keydlg-facts li::before {
+  content: "·";
+  position: absolute; left: var(--sp-2);
+  color: var(--foil);
+}
+.keydlg-facts b { color: var(--text-primary); font-weight: 500; }
+
+.keydlg-saved {
+  margin-top: var(--sp-4);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface-well);
+  border-left: 2px solid var(--foil-rule);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.keydlg-saved b { font-family: var(--font-mono); letter-spacing: 0; text-transform: none; color: var(--text-primary); }
+
+.keydlg-form { margin-top: var(--sp-5); }
+.keydlg-label {
+  display: block;
+  margin-bottom: var(--sp-2);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.keydlg-form .input { font-family: var(--font-mono); font-size: var(--fs-sm); }
+.keydlg-actions { display: flex; gap: var(--sp-3); margin-top: var(--sp-4); flex-wrap: wrap; }
+
+.keydlg-note {
+  margin-top: var(--sp-4);
+  padding: var(--sp-3);
+  border-radius: var(--r);
+  font-size: var(--fs-sm);
+  border: 1px solid var(--rule);
+  color: var(--text-secondary);
+}
+.keydlg-note-good { border-color: var(--sig-good-rule); background: var(--sig-good-wash); color: var(--sig-good); }
+.keydlg-note-bad { border-color: var(--sig-bad-rule); background: var(--sig-bad-wash); color: var(--sig-bad); }
+
+.keydlg-help {
+  margin-top: var(--sp-5);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--rule);
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+}
+.keydlg-help a { border-bottom: 1px solid var(--foil-rule); color: var(--text-secondary); }
+.keydlg-help a:hover { color: var(--text-primary); }
 
 /* ── responsive ───────────────────────────────────────────────────────── */
 @media (max-width: 900px) {
@@ -1022,7 +1153,9 @@ button.chip:hover:not(:disabled) { border-color: var(--text-secondary); color: v
   /* nav: wordmark + mode pill on row 1, links as one scrollable row 2 */
   .topnav-in { row-gap: var(--sp-2); }
   .wordmark { margin-right: auto; font-size: 1.16rem; }
-  #mode-pill { order: 2; }
+  /* "LIVE · your key" is a long label; tighten it so the masthead stays two
+     rows (wordmark + pill, then the links) instead of three */
+  #mode-pill { order: 2; letter-spacing: .06em; padding: 2px var(--sp-2); gap: var(--sp-1); }
   .nav-links {
     order: 3;
     width: 100%;
@@ -1055,6 +1188,8 @@ button.chip:hover:not(:disabled) { border-color: var(--text-secondary); color: v
   .watch-actions { flex-wrap: wrap; }
   .rig-selects { flex-direction: column; }
   .runhead .rh-no { margin-left: 0; width: 100%; }
+  .keydlg { padding: var(--sp-5) var(--sp-4) var(--sp-4); }
+  .keydlg-actions .btn { width: 100%; }
 }
 
 /* ── reduced motion ───────────────────────────────────────────────────── */

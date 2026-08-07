@@ -36,6 +36,8 @@ Same rules, same engine, same scoring. The benchmark is the arena with the human
 
 **Presets are canon, custom is sandbox.** One official ruleset per game feeds the public Index. Everything is tweakable in a sandbox, but sandbox results are marked unofficial and never enter the canonical board. This protects the number from meaning nothing while still giving people the toy. Toggles are also content: "what happens when nobody can talk privately" is a one-click ablation with an interesting delta.
 
+**Live models are bring-your-own-key, by design.** The public deployment holds no key. A visitor who wants real opponents supplies their own OpenRouter key: it is stored in their browser, travels in a request header, is used for their matches and nothing else, and is never logged, persisted, returned in any response, or written into the Index. This is the right shape for a template — a template should not ship funded by its author's credentials, and a remixer adds their own key anyway. It also removes the failure mode where a public URL drains one person's account. A server-side key still works and takes precedence where one is set (a private deployment, a benchmark run), and only that path is metered by `DAILY_CALL_BUDGET`; a visitor spending their own money is neither charged to our allowance nor blocked by it.
+
 **Cost model: open the harness, host the board.** The engine is MIT and runs anywhere, so a lab or an enterprise runs frontier models on their own compute. We run the cheap tier and own the scoreboard and the methodology. We never pay the frontier bill. This is the same open-core logic as Booboo.
 
 ## 4. The games

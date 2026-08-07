@@ -15,12 +15,38 @@ function esc(s) {
 }
 function money(n) { return "$" + Math.round(Number(n) || 0).toLocaleString("en-US"); }
 
+/* ── the visitor's own OpenRouter key ───────────────────────────────────
+   Kept in this browser, never on our server. It rides along as a header on
+   the three POSTs that actually make model calls, plus the key check — and
+   on nothing else, so it is never sent where it isn't needed. Never in a URL,
+   never in a query string, never on a GET. */
+const KEY_STORE = "golden-arena:openrouter-key";
+function storedKey() {
+  try { return localStorage.getItem(KEY_STORE) || ""; } catch (e) { return ""; }
+}
+function saveStoredKey(k) { try { localStorage.setItem(KEY_STORE, k); } catch (e) { /* private mode */ } }
+function clearStoredKey() { try { localStorage.removeItem(KEY_STORE); } catch (e) { /* private mode */ } }
+/* the only rendering of a key anywhere — derived here, from the local copy */
+function maskKey(k) {
+  const s = String(k || "");
+  return s.length < 6 ? "sk-or-…" : "sk-or-…" + s.slice(-3);
+}
+function keyIsWanted(path, method) {
+  if (method !== "POST") return false;
+  return path === "/api/match" || path === "/api/tournament" || path === "/api/verify-key" ||
+    /^\/api\/match\/[^/]+\/input$/.test(path);
+}
+
 async function api(path, opts = {}) {
   let res;
   const init = { method: opts.method || (opts.body ? "POST" : "GET") };
   if (opts.body) {
     init.headers = { "Content-Type": "application/json" };
     init.body = JSON.stringify(opts.body);
+  }
+  if (keyIsWanted(path, init.method)) {
+    const k = opts.keyOverride !== undefined ? opts.keyOverride : storedKey();
+    if (k) init.headers = Object.assign({}, init.headers, { "X-OpenRouter-Key": k });
   }
   try {
     res = await fetch(path, init);
@@ -35,13 +61,24 @@ async function api(path, opts = {}) {
   return data;
 }
 
-function toast(msg, kind) {
+function toast(msg, kind, action) {
   const box = document.getElementById("toasts");
   if (!box) return;
   const el = document.createElement("div");
   el.className = "toast" + (kind === "error" ? " toast-error" : kind === "ok" ? " toast-ok" : "");
   el.setAttribute("role", "status");
-  el.textContent = msg;
+  const line = document.createElement("span");
+  line.textContent = msg;
+  el.appendChild(line);
+  /* a toast that hands you the fix, not just the bad news */
+  if (action) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "toast-btn";
+    b.textContent = action.label;
+    b.addEventListener("click", () => { el.remove(); action.run(); });
+    el.appendChild(b);
+  }
   box.appendChild(el);
   while (box.children.length > 3) box.removeChild(box.firstChild);
   setTimeout(() => {
@@ -139,7 +176,7 @@ const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "
 function impressionHtml(matchId, gameId) {
   const d = new Date();
   const date = String(d.getDate()).padStart(2, "0") + " " + MONTHS[d.getMonth()] + " " + d.getFullYear();
-  const edition = CONFIG && CONFIG.liveMode ? "Live table" : "Demo table";
+  const edition = (CONFIG && CONFIG.liveMode) || storedKey() ? "Live table" : "Demo table";
   const id = String(matchId || "").slice(-4).toUpperCase();
   return '<div class="impression">' +
     '<span class="imp-no">Nº ' + esc(id || "————") + "</span>" +
@@ -184,24 +221,153 @@ function receiptRowHtml(p) {
 const $view = document.getElementById("view");
 let viewToken = 0;
 
+/* The pill is the door to the key panel: it already says which table you are
+   sitting at, so it is the honest place to change it. */
 function renderPill() {
   const p = document.getElementById("mode-pill");
   if (!p) return;
-  if (!CONFIG) {
+  const mine = storedKey();
+  if (mine) {
+    p.className = "pill pill-live pill-byok";
+    p.innerHTML = '<i class="pill-dot"></i>LIVE · your key';
+    p.title = "Real models, billed to your own OpenRouter key (" + maskKey(mine) + "). Click to check or remove it.";
+  } else if (!CONFIG) {
     p.className = "pill pill-unknown";
     p.textContent = "· · ·";
-    p.title = "";
-    return;
-  }
-  if (CONFIG.liveMode) {
+    p.title = "Asking the house which table is open…";
+  } else if (CONFIG.serverLive) {
     p.className = "pill pill-live";
     p.innerHTML = '<i class="pill-dot"></i>LIVE';
-    p.title = "Live models at the table";
+    p.title = "Live models at the table, on the house. Click for details.";
   } else {
     p.className = "pill pill-demo";
     p.innerHTML = '<i class="pill-dot"></i>DEMO';
-    p.title = "Scripted sparring partners — add an OpenRouter key to face real models";
+    p.title = "Scripted sparring partners. Click to bring your own OpenRouter key and face real models.";
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   THE KEY PANEL — a leaf slipped into the register
+   Plain language, one password field, one check. The key never comes back
+   out of storage into the DOM: what you see after saving is a mask derived
+   here in the browser.
+   ═══════════════════════════════════════════════════════════════════════ */
+const keyPanel = { el: null, open: false, busy: false, note: null, noteKind: "", returnTo: null };
+
+function keyPanelHtml() {
+  const mine = storedKey();
+  const note = keyPanel.note
+    ? '<p class="keydlg-note keydlg-note-' + esc(keyPanel.noteKind || "info") + '" role="status">' + esc(keyPanel.note) + "</p>"
+    : "";
+  const saved = mine
+    ? '<p class="keydlg-saved">On file in this browser: <b>' + esc(maskKey(mine)) + "</b></p>"
+    : "";
+  return '<div class="keydlg-scrim" data-action="key-close"></div>' +
+    '<div class="keydlg" role="dialog" aria-modal="true" aria-labelledby="keydlg-title">' +
+      '<button type="button" class="keydlg-x" data-action="key-close" aria-label="Close">✕</button>' +
+      '<p class="kicker kicker-rule">The house key</p>' +
+      '<h2 class="keydlg-title" id="keydlg-title">Play the real models</h2>' +
+      '<p class="keydlg-lede">This arena runs scripted sparring partners by default. Give it an OpenRouter key and you sit down opposite the actual models instead.</p>' +
+      '<ul class="keydlg-facts">' +
+        "<li>The key is stored <b>in your browser</b>, in this device's local storage.</li>" +
+        "<li>It is sent to our server only to make <b>your</b> matches, and passed straight to OpenRouter.</li>" +
+        "<li>We never store it, never log it, and it never lands in the Index.</li>" +
+        "<li>You pay for your own calls. A match is a fraction of a cent on the small models here.</li>" +
+      "</ul>" +
+      saved +
+      '<form class="keydlg-form" data-action="key-save">' +
+        '<label class="keydlg-label" for="key-input">Your OpenRouter key</label>' +
+        '<input id="key-input" class="input" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-or-v1-…" aria-describedby="keydlg-help">' +
+        '<div class="keydlg-actions">' +
+          '<button type="submit" class="btn btn-primary" data-busy="' + (keyPanel.busy ? "1" : "") + '"' + (keyPanel.busy ? " disabled" : "") + ">" +
+            (keyPanel.busy ? "Checking…" : "Check and save") + "</button>" +
+          (mine ? '<button type="button" class="btn btn-quiet" data-action="key-forget">Forget key</button>' : "") +
+        "</div>" +
+      "</form>" +
+      note +
+      '<p class="keydlg-help" id="keydlg-help">No key yet? <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">Make one at openrouter.ai/keys</a> — it takes a minute and a few dollars of credit lasts a very long time here.</p>' +
+    "</div>";
+}
+
+function renderKeyPanel() {
+  if (!keyPanel.el) return;
+  keyPanel.el.innerHTML = keyPanelHtml();
+  const first = document.getElementById("key-input") || keyPanel.el.querySelector(".keydlg-x");
+  if (first) first.focus();
+}
+
+function openKeyPanel() {
+  if (keyPanel.open) return;
+  keyPanel.open = true;
+  keyPanel.note = null;
+  keyPanel.busy = false;
+  keyPanel.returnTo = document.activeElement;
+  keyPanel.el = document.createElement("div");
+  keyPanel.el.className = "keydlg-layer";
+  document.body.appendChild(keyPanel.el);
+  document.body.classList.add("no-scroll");
+  renderKeyPanel();
+}
+
+function closeKeyPanel() {
+  if (!keyPanel.open) return;
+  keyPanel.open = false;
+  if (keyPanel.el) keyPanel.el.remove();
+  keyPanel.el = null;
+  document.body.classList.remove("no-scroll");
+  const back = keyPanel.returnTo;
+  keyPanel.returnTo = null;
+  if (back && back.focus) back.focus();
+}
+
+async function checkAndSaveKey() {
+  const inp = document.getElementById("key-input");
+  const typed = inp ? inp.value.trim() : "";
+  if (!typed) { keyPanel.note = "Paste a key first."; keyPanel.noteKind = "bad"; renderKeyPanel(); return; }
+  keyPanel.busy = true;
+  keyPanel.note = null;
+  renderKeyPanel();
+  let out;
+  try {
+    /* keyOverride: check what was TYPED, not what is stored */
+    out = await api("/api/verify-key", { method: "POST", keyOverride: typed });
+  } catch (err) {
+    out = { ok: false, error: err.error || "That check didn't get through." };
+  }
+  keyPanel.busy = false;
+  if (out && out.ok) {
+    saveStoredKey(typed);
+    keyErrorShown = null;      /* a fresh key deserves a fresh warning if it fails */
+    const bits = ["Key accepted — " + (out.label || "unnamed key")];
+    if (out.usage !== null && out.usage !== undefined) bits.push("$" + Number(out.usage).toFixed(4) + " used so far");
+    if (out.limit !== null && out.limit !== undefined) bits.push("$" + Number(out.limit).toFixed(2) + " limit");
+    keyPanel.note = bits.join(" · ") + ".";
+    keyPanel.noteKind = "good";
+    renderPill();
+    toast("You're on the live table now.", "ok");
+  } else {
+    keyPanel.note = (out && out.error) || "That key didn't check out.";
+    keyPanel.noteKind = "bad";
+  }
+  renderKeyPanel();          /* the typed value is dropped with the old markup */
+}
+
+function forgetKey() {
+  clearStoredKey();
+  keyErrorShown = null;
+  keyPanel.note = "Key removed from this browser. You're back on the scripted table.";
+  keyPanel.noteKind = "info";
+  renderPill();
+  renderKeyPanel();
+}
+
+/* A key that stops working mid-match: say so once, and hand over the fix. */
+let keyErrorShown = null;
+function noteKeyError(msg) {
+  if (!msg || keyErrorShown === msg) return;
+  keyErrorShown = msg;
+  toast("OpenRouter turned your key away — the table fell back to scripted play.", "error",
+    { label: "Fix key", run: openKeyPanel });
 }
 
 function parseHash() {
@@ -426,6 +592,8 @@ async function renderPlay(params) {
 function renderPlayNow() {
   if (routePath() !== "/play" || !CONFIG) return;
   const st = playState.match;
+  /* one funnel for every state the server hands back, however it arrived */
+  if (st && st.keyError) noteKeyError(st.keyError);
   const inMatch = playState.stage === "match" && st;
   /* the lights go down for a live match and come back up — on paper — the
      moment the record is settled. That transition carries the meaning. */
@@ -933,6 +1101,8 @@ async function pollWatch(token) {
     const d = await api("/api/tournament");
     if (token !== viewToken) return;
     watchState.data = d;
+    const bad = ((d && d.matches) || []).find((m) => m && m.keyError);
+    if (bad) noteKeyError(bad.keyError);
     renderWatchLive();
     scheduleWatch(token, d && d.running ? 1500 : 4000);
   } catch (e) {
@@ -1247,6 +1417,9 @@ document.addEventListener("click", (e) => {
       playState.stage = "setup";
       renderPlayNow();
       break;
+    case "key-open": openKeyPanel(); break;
+    case "key-close": closeKeyPanel(); break;
+    case "key-forget": forgetKey(); break;
     case "watch-pick-game": watchState.game = el.dataset.id; renderWatchControls(); break;
     case "watch-run": runTournament(); break;
     case "watch-reset": resetTournament(); break;
@@ -1258,6 +1431,7 @@ document.addEventListener("submit", (e) => {
   const f = e.target.closest("form[data-action]");
   if (!f) return;
   e.preventDefault();
+  if (f.dataset.action === "key-save") { checkAndSaveKey(); return; }
   if (f.dataset.action === "say") {
     const inp = document.getElementById("msg-input");
     const text = inp ? inp.value.trim() : "";
@@ -1268,6 +1442,18 @@ document.addEventListener("submit", (e) => {
 
 /* Enter always submits the message — independent of implicit form submission */
 document.addEventListener("keydown", (e) => {
+  /* the key panel is modal: Escape closes it, Tab stays inside it */
+  if (keyPanel.open) {
+    if (e.key === "Escape") { e.preventDefault(); closeKeyPanel(); return; }
+    if (e.key === "Tab" && keyPanel.el) {
+      const f = keyPanel.el.querySelectorAll("button, input, a[href]");
+      if (!f.length) return;
+      const first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      return;
+    }
+  }
   if (e.key !== "Enter" || !e.target) return;
   if (e.target.id === "msg-input") {
     e.preventDefault();
@@ -1303,6 +1489,8 @@ document.addEventListener("change", (e) => {
 /* ── boot ──────────────────────────────────────────────────────────────── */
 window.addEventListener("hashchange", route);
 window.addEventListener("unhandledrejection", (e) => { e.preventDefault(); });
+/* a saved key is known before the config lands — say so immediately */
+renderPill();
 ensureConfig().catch(() => { /* views retry on their own */ });
 /* the running head and the folio carry the record count on EVERY view, so
    the count is fetched once at boot rather than per view */
