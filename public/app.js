@@ -177,43 +177,47 @@ const RULES = {
     name: "Split or Steal",
     sub: "Two promises walk in. Somebody lies.",
     card: "One secret word each. Split shares the $100. Steal takes the lot, unless you both do.",
-    body: "<b>$100 on the table.</b> You talk it over in the open, as long as you like. Then you both secretly choose one word.",
+    seats: "2 players · about 2 minutes",
+    body: "A hundred dollars sits between you. Talk as long as you like and promise whatever you want, then you each pick one word in private. The words turn over together.",
     payoffs: [
       ["good", "Both split", "$50 each"],
       ["bad", "One steals, one splits", "the thief takes all $100, the other gets nothing"],
       ["bad", "Both steal", "the pot burns, nobody gets a penny"],
     ],
-    reveals: "whether a promise made out loud survives contact with a better offer.",
+    reveals: "whether a promise made out loud survives a better offer arriving in private.",
   },
   prisoners: {
     name: "Prisoner's Dilemma",
     sub: "Five rounds. Grudges are data.",
     card: "Five rounds, same opponent. Cooperating pays both. Defecting pays you more, until they stop cooperating.",
-    body: "Same opponent, five times. Each round you both secretly choose <b>COOPERATE</b> or <b>DEFECT</b>, and you may exchange a message in between.",
+    seats: "2 players · about 4 minutes",
+    body: "The same opponent, five times over. Each round you both choose in secret, with one message allowed in between. What you did last round is the only thing either of you has to go on.",
     payoffs: [
       ["good", "Both cooperate", "$30 each"],
       ["bad", "You defect while they cooperate", "you $50, them $0"],
       ["bad", "Both defect", "$10 each"],
     ],
-    reveals: "what it does after you cross it. Some retaliate forever. Some forgive once. Some were never cooperating in the first place.",
+    reveals: "what it does after you cross it. Some come back at you forever. Some forgive once. Some were never cooperating in the first place.",
   },
   ultimatum: {
     name: "Ultimatum",
     sub: "Take the insult, or burn the money.",
     card: "One of you cuts the $100. The other takes the cut, or burns it for both.",
-    body: "Two rounds, and the roles swap so you each get a turn on both sides. The <b>proposer</b> splits $100 however they like. The <b>responder</b> either accepts, and the split stands, or rejects, and <b>both get nothing</b>.",
+    seats: "2 players · about 2 minutes",
+    body: "One of you cuts the hundred, any way you like. The other says yes and the cut stands, or says no and you both walk away with nothing. Then you swap and do it again.",
     payoffs: [
       ["", "The proposer splits $100", "however they like"],
       ["good", "The responder accepts", "the split stands"],
       ["bad", "The responder rejects", "both get nothing"],
     ],
-    reveals: "greed on one side, and on the other, whether it will pay real money to punish someone for insulting it.",
+    reveals: "how hard it pushes while it holds the knife, and whether it will pay real money to punish an insult.",
   },
   trust: {
     name: "Trust Game",
     sub: "Wire the money. Watch what comes back.",
     card: "Whatever the investor wires triples on the way. The trustee sends back whatever they like.",
-    body: "Two rounds, roles swap. The <b>investor</b> holds $100 and sends any part of it to the <b>trustee</b>. Whatever is sent <b>triples on the way</b>. The trustee then sends back however much they feel like. Possibly nothing.",
+    seats: "2 players · about 2 minutes",
+    body: "You hold a hundred and wire across any part of it. Whatever you send triples on the way. They keep what they like and send back the rest, and nothing at all forces their hand. Then you swap.",
     payoffs: [
       ["good", "Whatever is sent", "triples on the way"],
       ["", "Whatever is held back", "stays with the investor"],
@@ -303,7 +307,7 @@ function noteRecords(board) {
   if (board && board.totals && board.totals.matches != null) {
     RECORDS = Number(board.totals.matches) || 0;
     document.querySelectorAll(".rh-no").forEach((e) => { e.textContent = "Nº " + recordNo(); });
-    document.querySelectorAll(".fo-no").forEach((e) => { e.textContent = recordNo() + " records on the file"; });
+    document.querySelectorAll(".fo-no").forEach((e) => { e.textContent = recordNo() + " records on file"; });
   }
 }
 function runheadHtml(section) {
@@ -313,7 +317,7 @@ function runheadHtml(section) {
 function folioHtml(section, extra) {
   return '<footer class="folio"><span>' + esc(section) + "</span>" +
     (extra || "") +
-    '<span class="fo-no">' + recordNo() + " records on the file</span></footer>";
+    '<span class="fo-no">' + recordNo() + " records on file</span></footer>";
 }
 
 function receiptRowHtml(p) {
@@ -373,7 +377,7 @@ function keyPanelHtml() {
     ? '<p class="keydlg-saved">On file in this browser: <b>' + esc(maskKey(mine)) + "</b></p>"
     : "";
   return '<div class="keydlg-scrim" data-action="key-close"></div>' +
-    '<div class="keydlg" role="dialog" aria-modal="true" aria-labelledby="keydlg-title">' +
+    '<div class="keydlg" role="dialog" aria-modal="true" aria-labeledby="keydlg-title">' +
       '<button type="button" class="keydlg-x" data-action="key-close" aria-label="Close">✕</button>' +
       '<p class="kicker kicker-rule">The house key</p>' +
       '<h2 class="keydlg-title" id="keydlg-title">Play the real models</h2>' +
@@ -395,7 +399,7 @@ function keyPanelHtml() {
         "</div>" +
       "</form>" +
       note +
-      '<p class="keydlg-help" id="keydlg-help">No key yet? <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">Make one at openrouter.ai/keys</a> — it takes a minute and a few dollars of credit lasts a very long time here.</p>' +
+      '<p class="keydlg-help" id="keydlg-help">No key yet? <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">Make one at openrouter.ai/keys</a>. It takes a minute, and a few dollars of credit lasts a very long time here.</p>' +
     "</div>";
 }
 
@@ -595,14 +599,14 @@ async function renderHome() {
   $view.innerHTML =
     runheadHtml("The arena floor") +
     '<section class="hero">' +
-      '<p class="kicker kicker-rule">A behavioural record of the machines</p>' +
+      '<p class="kicker kicker-rule">A behavioral record of the machines</p>' +
       '<h1 class="hero-title">Can you tell when an AI is <em>lying to you?</em></h1>' +
-      '<p class="hero-sub">Sit down opposite a frontier model. Negotiate for real stakes. Then find out what it decided behind your back. Every game feeds the Behavioral Index — the psychology leaderboard of the machines.</p>' +
+      '<p class="hero-sub">Sit down opposite a frontier model. Negotiate for real stakes. Then find out what it decided behind your back. Every game feeds the Behavioral Index, the psychology leaderboard of the machines.</p>' +
       '<div class="hero-cta"><a class="btn btn-primary btn-lg" href="#/play">Take a seat</a><a class="btn btn-quiet btn-lg" href="#/board">See the Index</a></div>' +
     "</section>" +
     '<section class="home-sec sheet"><div><h2 class="sec-label">The four tables</h2><div class="game-grid">' + gameCards + "</div></div>" +
       '<aside class="margin-note"><span class="margin-note-h">On the plates</span>' +
-      "Four classic behavioural-economics games, each cut to two to four minutes. Every finished match is filed as a numbered impression and enters the catalogue." +
+      "Four classic behavioral-economics games, each cut to two to four minutes. Every finished match is filed as a numbered impression and enters the catalogue." +
       "</aside></section>" +
     '<section class="home-sec sheet"><div>' +
       '<h2 class="sec-label">The rig</h2>' +
@@ -616,7 +620,7 @@ async function renderHome() {
       '<div class="teaser" id="teaser-body"><div class="teaser-loading">Opening the ledger…</div></div>' +
     "</div>" +
       '<aside class="margin-note"><span class="margin-note-h">Method</span>' +
-      "Promise-breaking is detected by a labelled heuristic, not a judge. Small samples are small — every axis carries its <b>n</b>, and axes stay hidden until they have data." +
+      "Promise-breaking is detected by a labeled heuristic, never a judge. Small samples are small. Every axis carries the number of calls behind it, and stays hidden until it has at least five." +
       "</aside></section>" +
     folioHtml("The arena floor",
       '<span><a class="foot-link" href="https://github.com/jessymariau/golden-arena" target="_blank" rel="noopener">GitHub</a> · Replit Buildathon</span>');
@@ -666,14 +670,20 @@ function teaserHtml(board) {
    VIEW 2 · #/rules — the register of play
    The four dealt games in full, and Empire, which is written but not dealt.
    ═══════════════════════════════════════════════════════════════════════ */
-function ruleEntryHtml(id) {
+const NUMERALS = ["I", "II", "III", "IV", "V"];
+
+function ruleEntryHtml(id, i) {
   const r = RULES[id];
   return '<article class="rule-entry" id="rule-' + id + '">' +
+    '<div class="rule-head">' +
+      '<span class="rule-num" aria-hidden="true">' + NUMERALS[i] + "</span>" +
+      '<span class="rule-seats">' + esc(r.seats) + "</span>" +
+    "</div>" +
     "<h3>" + esc(r.name) + "</h3>" +
     '<p class="rule-sub">' + esc(r.sub) + "</p>" +
     '<p class="rule-body">' + r.body + "</p>" +
     payoffsHtml(id) +
-    '<p class="rule-reveals"><span class="rule-reveals-h">What it reveals</span>' + esc(r.reveals) + "</p>" +
+    '<p class="rule-reveals"><span class="rule-reveals-h">What it tells you</span>' + esc(r.reveals) + "</p>" +
     '<div class="rule-actions">' +
       '<a class="btn btn-sm btn-primary" href="#/play?game=' + id + '">Play it</a>' +
       '<a class="btn btn-sm btn-quiet" href="#/watch?game=' + id + '">Spectate</a>' +
@@ -682,10 +692,14 @@ function ruleEntryHtml(id) {
 
 function empireHtml() {
   return '<article class="rule-entry rule-entry-empire" id="rule-empire">' +
-    '<p class="not-dealt">Written, not yet dealt</p>' +
+    '<div class="rule-head">' +
+      '<span class="rule-num" aria-hidden="true">V</span>' +
+      '<span class="rule-seats">4 players · about 20 minutes</span>' +
+    "</div>" +
     "<h3>Empire</h3>" +
-    '<p class="rule-sub">Four players. Twelve turns. You cannot win alone, and you cannot attack alone.</p>' +
-    '<p class="rule-body">The long game. About twenty minutes. This is where secret alliances live. It is not in the arena yet: the four games above are the ones you can sit down at today. The rules below are the ones it will be dealt under.</p>' +
+    '<p class="rule-sub">You cannot win alone, and you cannot attack alone.</p>' +
+    '<p class="rule-body">Twelve territories between four players, and nobody starts with enough. Land only ever changes hands when somebody agrees to hand it over, so the only road to winning runs through being trusted. And a raid needs a partner, which means telling someone your plan and finding out at the reveal whether they turned up.</p>' +
+    '<p class="not-dealt">Written, not yet dealt. The four above are the ones you can sit down at today.</p>' +
     "<details class=\"empire-details\"><summary>The rules as written</summary><div class=\"empire-body\">" +
       "<h4>The board</h4>" +
       '<p class="rule-body"><b>Twelve territories, in four regions of three.</b> Everyone starts with three, and <b>nobody starts with a complete region.</b> Each territory pays you <b>10 coins a turn</b>. Hold all three of a region and it pays <b>90 a turn</b> instead of 30. Everyone starts with <b>50 coins</b>.</p>' +
@@ -736,12 +750,12 @@ function renderRules(params) {
   $view.innerHTML =
     runheadHtml("The rules") +
     '<header class="view-head"><p class="kicker kicker-rule">The register of play</p>' +
-      "<h2>Everybody decides at once, and in secret.</h2>" +
-      '<p class="dek">Five games. Every one of them can be played by a person. Four are dealt in the arena today. Empire, the long game, is written but not yet dealt.</p></header>' +
+      "<h2>Everyone chooses at the same moment, in secret. Then it all turns over at once.</h2>" +
+      '<p class="dek">That one rule is the whole design. It is what makes a promise worth something, and it is what makes breaking one possible.</p></header>' +
     '<section class="sheet"><div>' +
-      '<p class="rules-lede">In all of them, everybody decides at the same time and in secret, then everything is revealed at once. That is what makes a promise worth something, and what makes breaking one possible.</p>' +
+      '<p class="rules-lede">Five games, all of them playable by a person. Nobody sees anybody else’s choice until every choice is in. You can say whatever you like beforehand, and saying it costs you nothing.</p>' +
       '<div class="chips rules-toc">' + toc + "</div>" +
-      RULE_ORDER.map(ruleEntryHtml).join("") +
+      RULE_ORDER.map((id, i) => ruleEntryHtml(id, i)).join("") +
       empireHtml() +
     "</div>" +
     '<aside class="margin-note"><span class="margin-note-h">Who sees what</span>' +
@@ -1225,7 +1239,7 @@ function offerDock(d, dis, s) {
       '<span class="rtick-label" style="--at:' + fairAt + '%" aria-hidden="true">fair</span>'
     : "";
   return '<div class="dock card" aria-live="polite">' +
-    '<p class="dock-note">Round ' + (d.round || 1) + " — you hold the " + money(max) + ". Slice it.</p>" +
+    '<p class="dock-note">Round ' + (d.round || 1) + " · you hold the " + money(max) + ". Slice it.</p>" +
     '<div class="rangebox"><div class="range-wrap">' +
       '<input type="range" class="range" id="dock-range" data-kind="offer" min="' + (d.min || 0) + '" max="' + max + '" step="1" value="' + cur + '" style="--fill:' + Math.round((cur / max) * 100) + '%" aria-label="How much of the pot to offer them" ' + dis + " />" +
       fairTick +
@@ -1259,7 +1273,7 @@ function sendDock(d, dis, s) {
   const mult = Number(d.mult) || 3;
   const cur = s.dockVal != null ? s.dockVal : Math.round(max / 2);
   return '<div class="dock card" aria-live="polite">' +
-    '<p class="dock-note">Round ' + (d.round || 1) + " — you hold " + money(max) + ". Whatever you wire lands ×" + mult + ".</p>" +
+    '<p class="dock-note">Round ' + (d.round || 1) + " · you hold " + money(max) + ". Whatever you wire lands ×" + mult + ".</p>" +
     '<div class="rangebox"><div class="range-wrap">' +
       '<input type="range" class="range" id="dock-range" data-kind="send" data-mult="' + mult + '" min="' + (d.min || 0) + '" max="' + max + '" step="1" value="' + cur + '" style="--fill:' + Math.round((cur / max) * 100) + '%" aria-label="How much to wire" ' + dis + " />" +
       '<span class="rtick-end rtick-end-min" aria-hidden="true">' + money(d.min || 0) + "</span>" +
@@ -1892,7 +1906,7 @@ async function renderBoard() {
   $view.innerHTML =
     runheadHtml("The Behavioral Index") +
     '<header class="view-head"><p class="kicker kicker-rule">The catalogue</p><h2>Behavioral Index</h2>' +
-    '<p class="dek">What the machines do when they think it’s just a game. Lab studies find frontier models more cooperative than humans — the Index tests what’s left of that when the field isn’t level.</p></header>' +
+    '<p class="dek">What the machines do when they think it’s just a game. Lab studies find frontier models more cooperative than humans. The Index tests what is left of that when the field is not level.</p></header>' +
     '<div id="board-body"><div class="empty">Opening the ledger…</div></div>' +
     folioHtml("The Behavioral Index");
   enterView();
@@ -1917,7 +1931,7 @@ async function renderBoard() {
 function boardHtml(b) {
   const rows = (b && b.rows) || [];
   let html = "";
-  if (b && b.seeded) html += '<p class="badge-seeded">Showing seeded sample matches — play to overwrite history</p>';
+  if (b && b.seeded) html += '<p class="badge-seeded">Showing seeded sample matches. Play, and yours join them.</p>';
   if (b && b.totals) {
     html += '<p class="board-totals">' + (b.totals.matches || 0) + " matches on the record · " +
       (b.totals.liveMatches || 0) + " live · " + (b.totals.demoMatches || 0) + " scripted</p>";
@@ -1931,7 +1945,7 @@ function boardHtml(b) {
     html += '<div class="idx" role="table" aria-label="The Behavioral Index">' +
       '<div class="idx-head" role="row">' +
         '<span role="columnheader">#</span><span role="columnheader">Player</span>' +
-        '<span role="columnheader" class="idx-h-num">M</span><span role="columnheader" class="idx-h-num">Earned</span>' +
+        '<span role="columnheader" class="idx-h-num">Matches</span><span role="columnheader" class="idx-h-num">Earned</span>' +
         '<span role="columnheader">The six axes</span><span role="columnheader">Corruption</span>' +
       "</div>" +
       rows.map(idxRowHtml).join("") +
@@ -1943,14 +1957,14 @@ function boardHtml(b) {
     html += '<section class="home-sec sheet"><div><h2 class="sec-label">Recent impressions</h2><div class="receipts-grid">' +
       receipts.slice(0, 8).map(miniReceiptCardHtml).join("") + "</div></div>" +
       '<aside class="margin-note"><span class="margin-note-h">Method, honestly</span>' +
-      "Promise-breaking is detected by a labelled heuristic — a pattern-match on open-court promises — not a judge. " +
+      "Promise-breaking is detected by a labeled heuristic, a pattern-match on open-court promises, never a judge. " +
       "Small samples are small: every axis carries its <b>n</b>, and axes hide until they have data. No fake precision." +
       (CONFIG && CONFIG.budget && CONFIG.budget.exhausted
         ? '<p class="method-budget">Daily live-model budget spent; matches run scripted until tomorrow.</p>' : "") +
       "</aside></section>";
   } else {
     html += '<footer class="method">' +
-      "<p><b>Method, honestly:</b> promise-breaking is detected by a labelled heuristic — a pattern-match on open-court promises — not a judge. " +
+      "<p><b>Method, honestly:</b> promise-breaking is detected by a labeled heuristic, a pattern-match on open-court promises, never a judge. " +
       "Small samples are small: every axis carries its n, and axes hide until they have data — no fake precision.</p>" +
       (CONFIG && CONFIG.budget && CONFIG.budget.exhausted
         ? '<p class="method-budget">Daily live-model budget spent; matches run scripted until tomorrow.</p>' : "") +
@@ -1964,7 +1978,7 @@ function idxRowHtml(r, i) {
   return '<div class="idx-row' + (r.isHuman ? " idx-human" : "") + '" role="row">' +
     '<span class="idx-rank" role="cell">' + (i + 1) + "</span>" +
     '<span class="idx-player" role="cell">' + esc(r.label) + (r.isHuman ? '<span class="idx-youlot">you lot</span>' : "") + "</span>" +
-    '<span class="idx-matches" role="cell">' + (r.matches || 0) + "<span> m</span></span>" +
+    '<span class="idx-matches" role="cell">' + (r.matches || 0) + "<span> played</span></span>" +
     '<span class="idx-earn" role="cell">' + money(r.earnings) + "</span>" +
     '<span class="idx-axes" role="cell">' + axes + "</span>" +
     '<span class="idx-corr" role="cell">' + corruptionHtml(r.corruption) + "</span>" +
@@ -1973,13 +1987,17 @@ function idxRowHtml(r, i) {
 
 function microbarHtml(key, label, axes) {
   const a = axes && axes[key];
-  const has = a && a.value != null && a.n > 0;
+  const has = a && a.value != null;
   const v = has ? Math.round(a.value * 100) : 0;
   const n = (a && a.n) || 0;
-  return '<span class="microbar' + (has ? "" : " microbar-empty") + '" title="n = ' + n + ' decisions">' +
+  /* n goes on the face. It used to live only in a title attribute, which a
+     phone has no way to show, so the one number that qualifies every figure
+     on this board was unreadable on half the devices that see it. */
+  return '<span class="microbar' + (has ? "" : " microbar-empty") + '">' +
     '<span class="mb-label">' + label + "</span>" +
     '<span class="mb-track"><span class="mb-fill" style="--w:' + v + '%"></span></span>' +
-    '<span class="mb-val">' + (has ? v + "%" : "—") + "</span></span>";
+    '<span class="mb-val">' + (has ? v + "%" : "not yet") + "</span>" +
+    '<span class="mb-n">' + (n === 1 ? "1 call" : n + " calls") + "</span></span>";
 }
 
 function corruptionHtml(c) {

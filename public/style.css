@@ -1555,3 +1555,21 @@ a.chip:hover { border-color: var(--text-secondary); color: var(--text-primary); 
   animation-delay: calc(var(--in, 0) * 420ms);
 }
 @media (prefers-reduced-motion: reduce) { .is-arriving { animation: none; } }
+
+/* ── the rules: a plate per game, readable in one pass ────────────────── */
+.rule-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3);
+  padding-bottom: var(--sp-2); margin-bottom: var(--sp-3);
+  border-bottom: 1px solid var(--foil-rule);
+}
+.rule-num {
+  font-family: var(--font-display); font-size: var(--fs-lg); line-height: 1;
+  color: var(--text-tertiary); letter-spacing: .08em;
+}
+.rule-seats {
+  font-size: var(--fs-xs); letter-spacing: var(--track-label);
+  text-transform: uppercase; color: var(--text-tertiary); text-align: right;
+}
+.rule-entry + .rule-entry { margin-top: var(--sp-7); }
+.mb-n { font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.microbar-empty .mb-val { font-size: var(--fs-xs); letter-spacing: .04em; text-transform: none; }
