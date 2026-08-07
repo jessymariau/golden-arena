@@ -1126,6 +1126,169 @@ body.no-scroll { overflow: hidden; }
 .keydlg-help a { border-bottom: 1px solid var(--foil-rule); color: var(--text-secondary); }
 .keydlg-help a:hover { color: var(--text-primary); }
 
+/* ── comprehension: the register of play, the payoff matrix, the glossary ─
+   Nobody should have to hover, guess, or leave the room to find out what the
+   room does. Three components, reused on every surface that needs them. ── */
+
+/* the payoff matrix — the consequences, printed beside the decision */
+.payoffs-box { margin-top: var(--sp-4); }
+.payoffs-h {
+  font-size: var(--fs-xs);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.payoffs {
+  margin: var(--sp-2) 0 0;
+  border-top: 1px solid var(--rule);
+  font-variant-numeric: tabular-nums;
+}
+.po-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: var(--sp-3);
+  align-items: baseline;
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--rule);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+.po-row dt { font-weight: 500; color: var(--text-primary); }
+.po-row dd { margin: 0; color: var(--text-secondary); }
+.po-good dt { color: var(--sig-good); }
+.po-bad dt { color: var(--sig-bad); }
+
+/* the rule card: fifteen words, at the table, without leaving it */
+.table-rule {
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--text-secondary);
+  border-left: 2px solid var(--foil-rule);
+  padding-left: var(--sp-3);
+}
+.table-rule a { color: var(--text-primary); border-bottom: 1px solid var(--foil-rule); white-space: nowrap; }
+.table-brief { margin-top: var(--sp-2); }
+/* a sentence, not a label: the caps treatment next door is for headings */
+.blind-note { margin-top: var(--sp-2); }
+.setup-hint-block { display: block; margin-left: 0; text-transform: uppercase; letter-spacing: var(--track-label); font-size: var(--fs-xs); color: var(--text-tertiary); }
+
+/* the glossary — powers, handicaps and axes explaining themselves in words */
+.gloss {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-4) var(--sp-5);
+  margin: var(--sp-3) 0 0;
+}
+.gloss-item { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-1); min-width: 0; }
+.gloss-item dd { margin: 0; font-size: var(--fs-sm); line-height: 1.5; color: var(--text-secondary); }
+.gloss-item dd b { color: var(--text-primary); font-weight: 500; }
+.gloss-term {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+/* at the table only the rig in play is listed, one line each */
+.gloss-inplay { grid-template-columns: 1fr; gap: var(--sp-2); }
+.gloss-inplay .gloss-item { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: var(--sp-2); }
+.gloss-inplay dd { font-size: var(--fs-xs); }
+
+/* the register of play */
+.rules-lede {
+  max-width: var(--measure);
+  font-size: var(--fs-lg);
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+.rules-toc { margin-top: var(--sp-5); }
+a.chip:hover { border-color: var(--text-secondary); color: var(--text-primary); }
+.rule-entry {
+  margin-top: var(--sp-7);
+  padding-top: var(--sp-5);
+  border-top: 1px solid var(--rule);
+  scroll-margin-top: 92px;         /* the masthead is sticky */
+}
+.rule-entry h3 { font-family: var(--font-display); font-size: var(--fs-2xl); }
+.rule-entry h4 {
+  font-size: var(--fs-xs);
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-top: var(--sp-5);
+}
+.rule-sub {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: var(--fs-lg);
+  color: var(--text-secondary);
+  margin-top: var(--sp-1);
+}
+.rule-body {
+  max-width: var(--measure);
+  margin-top: var(--sp-4);
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+.rule-body b { color: var(--text-primary); font-weight: 500; }
+.rule-list {
+  max-width: var(--measure);
+  margin: var(--sp-3) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+.rule-list li { padding: var(--sp-1) 0 var(--sp-1) var(--sp-4); position: relative; border-top: 1px solid var(--rule-faint); }
+.rule-list li:first-child { border-top: 0; }
+.rule-list li::before { content: "·"; position: absolute; left: var(--sp-1); color: var(--foil); }
+.rule-reveals {
+  max-width: var(--measure);
+  margin-top: var(--sp-4);
+  padding-left: var(--sp-4);
+  border-left: 2px solid var(--foil-rule);
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+/* a run-in head: "WHAT IT REVEALS · whether a promise…" keeps RULES.md's
+   own sentence, which starts lower case, reading as a sentence */
+.rule-reveals-h {
+  font-size: var(--fs-xs);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.rule-reveals-h::after { content: " · "; letter-spacing: 0; }
+.rule-actions { display: flex; gap: var(--sp-2); flex-wrap: wrap; margin-top: var(--sp-5); }
+.not-dealt {
+  display: inline-block;
+  font-size: var(--fs-xs);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  border: 1px dashed var(--rule-strong);
+  border-radius: var(--r);
+  padding: 2px var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+.empire-details { margin-top: var(--sp-5); }
+.empire-details summary {
+  list-style: none;
+  display: inline-flex; align-items: center; gap: var(--sp-2);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--foil-rule);
+  padding-bottom: 2px;
+  cursor: pointer;
+}
+.empire-details summary::-webkit-details-marker { display: none; }
+.empire-details summary::before { content: "▸"; color: var(--text-tertiary); }
+.empire-details[open] summary::before { content: "▾"; }
+.empire-details summary:hover { color: var(--text-primary); }
+.empire-body { margin-top: var(--sp-4); }
+
 /* ── responsive ───────────────────────────────────────────────────────── */
 @media (max-width: 900px) {
   .seg { grid-template-columns: repeat(2, 1fr); }
@@ -1190,6 +1353,10 @@ body.no-scroll { overflow: hidden; }
   .runhead .rh-no { margin-left: 0; width: 100%; }
   .keydlg { padding: var(--sp-5) var(--sp-4) var(--sp-4); }
   .keydlg-actions .btn { width: 100%; }
+  /* two text columns are too narrow to read at this width — stack them */
+  .po-row { grid-template-columns: 1fr; gap: 0; }
+  .po-row dd { padding-left: var(--sp-3); }
+  .gloss { grid-template-columns: 1fr; gap: var(--sp-3); }
 }
 
 /* ── reduced motion ───────────────────────────────────────────────────── */

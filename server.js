@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 import { liveMode, hasServerKey, budgetState, verifyKey, scrub, DEFAULT_MODELS } from "./lib/llm.js";
 import { POWERS, validPowers } from "./lib/powers.js";
-import { GAMES, gameMeta, createMatch, advance, humanInput, setMatchKey } from "./lib/games.js";
+import { GAMES, gameMeta, createMatch, advance, humanInput, setMatchKey, aliasFor, maskPairs, maskText } from "./lib/games.js";
 import { initStore, records, addRecord, storageMode } from "./lib/storage.js";
 import { computeBoard, receiptOf } from "./lib/bench.js";
 import { seedPlan } from "./lib/seedplan.js";
@@ -107,17 +107,49 @@ setInterval(() => {
 // choice is waitingFor.decision.seen, which games.js controls. Built field by
 // field — match.apiKey is non-enumerable and is never named here.
 function publicState(match) {
+  // On a blind table the opponent's name is stripped HERE, on the way out, so
+  // it is absent from the response rather than merely hidden by the client.
+  // Headlines and spoken lines get the same treatment as the labels do.
+  const pairs = maskPairs(match);
+  const mask = (t) => maskText(t, pairs);
+  const result = match.done ? match.result : null;
+
   return {
     id: match.id,
     keyError: match.keyError || null, // scrubbed upstream in lib/llm.js
     game: match.game,
     done: match.done,
     liveMode: match.live,
-    players: match.players.map((p) => ({ label: p.label, isHuman: !!p.isHuman, powers: p.powers })),
-    transcript: match.transcript,
+    blind: Boolean(match.blind),
+    revealed: Boolean(match.revealed),
+    players: match.players.map((p, i) => ({
+      label: p.isHuman || !pairs.length ? p.label : aliasFor(i),
+      isHuman: !!p.isHuman,
+      powers: p.powers,
+    })),
+    transcript: pairs.length
+      ? match.transcript.map((t) => ({ ...t, text: mask(t.text) }))
+      : match.transcript,
     round: match.round,
-    waitingFor: match.waitingFor,
-    result: match.done ? match.result : null,
+    waitingFor: pairs.length && match.waitingFor
+      ? { ...match.waitingFor, note: mask(match.waitingFor.note) }
+      : match.waitingFor,
+    result: pairs.length && result ? maskResult(result, pairs) : result,
+  };
+}
+
+function maskResult(result, pairs) {
+  const mask = (t) => maskText(t, pairs);
+  const r = result.receipt;
+  return {
+    ...result,
+    reveal: mask(result.reveal),
+    receipt: {
+      ...r,
+      headline: mask(r.headline),
+      detail: mask(r.detail),
+      players: (r.players || []).map((p, i) => ({ ...p, label: p.isHuman ? p.label : aliasFor(i) })),
+    },
   };
 }
 
@@ -250,9 +282,14 @@ app.post("/api/verify-key", wrap(async (req, res) => {
 // human vs model matches
 // ---------------------------------------------------------------------------
 app.post("/api/match", wrap(async (req, res) => {
-  const { game, opponentId, powers } = req.body || {};
+  const { game, opponentId, powers, blind } = req.body || {};
   if (!GAMES[game]) return res.status(400).json({ error: `unknown game: ${game}` });
-  const opponent = DEFAULT_MODELS.find((m) => m.id === opponentId);
+
+  // Picking your opponent off a list and then calling the table blind would be
+  // theatre. Blind means we deal you one.
+  const opponent = opponentId
+    ? DEFAULT_MODELS.find((m) => m.id === opponentId)
+    : DEFAULT_MODELS[Math.floor(Math.random() * DEFAULT_MODELS.length)];
   if (!opponent) return res.status(400).json({ error: `unknown model: ${opponentId}` });
 
   const wait = cooledDown(req, lastMatchAt);
@@ -267,7 +304,12 @@ app.post("/api/match", wrap(async (req, res) => {
   ];
   const apiKey = visitorKey(req);
   // Either key path means real models spoke — the Index must record it as live.
-  const match = createMatch({ game, players, live: liveMode() || Boolean(apiKey), apiKey });
+  // Blind unless the visitor asked to see who they are up against.
+  const match = createMatch({
+    game, players, apiKey,
+    live: liveMode() || Boolean(apiKey),
+    blind: blind !== false,
+  });
   wireDossier(match);
   await advance(match);
   await maybeRecord(match);
@@ -278,6 +320,17 @@ app.post("/api/match", wrap(async (req, res) => {
 app.get("/api/match/:id", (req, res) => {
   const match = getSession(req.params.id);
   if (!match) return res.status(404).json({ error: "match not found" });
+  res.json(publicState(match));
+});
+
+// Lifting the mask, once, when the visitor asks. Only after the match is over:
+// mid-hand it would just be a cheat code, and the whole point is that you
+// decide without knowing.
+app.post("/api/match/:id/reveal", (req, res) => {
+  const match = getSession(req.params.id);
+  if (!match) return res.status(404).json({ error: "match not found" });
+  if (!match.done) return res.status(409).json({ error: "Not until it's settled. Play the hand first." });
+  match.revealed = true;
   res.json(publicState(match));
 });
 
