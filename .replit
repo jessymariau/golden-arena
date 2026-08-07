@@ -1,3 +1,8 @@
+# Provisions node+npm in BOTH the workspace and the deployment container.
+# Without it the Autoscale deploy dies with `sh: 1: npm: not found` (exit 127)
+# even though the build step succeeds.
+modules = ["nodejs-20"]
+
 run = "npm start"
 entrypoint = "server.js"
 
