@@ -773,6 +773,8 @@ const playState = {
   match: null,             /* latest state from the server */
   matchId: null,
   blind: true,             /* the table is blind unless you ask to see who you're playing */
+  show: null,              /* the showdown sequence, while it is running */
+  showToken: 0,            /* bumping it abandons an in-flight showdown */
   lastSetup: null,
   inFlight: false,
   opToken: 0,              /* staleness guard: bumping it orphans in-flight match requests */
@@ -809,7 +811,7 @@ function renderPlayNow() {
   const inMatch = playState.stage === "match" && st;
   /* the lights go down for a live match and come back up — on paper — the
      moment the record is settled. That transition carries the meaning. */
-  setRegister(!!(inMatch && !st.done));
+  setRegister(!!(inMatch && (!st.done || playState.show)));
   $view.innerHTML = inMatch ? matchHtml(playState) : setupHtml(playState);
   enterView();
   afterPlayRender();
@@ -1026,7 +1028,7 @@ function matchHtml(s) {
       rigGlossHtml((you.powers || []).concat(opp.powers || []), "gloss-inplay") +
     "</header>" +
     '<div class="transcript" id="transcript" aria-label="Match transcript" aria-live="polite">' + transcriptHtml(st, s) + "</div>" +
-    (settled ? revealHtml(st, s) : dockHtml(st, s)) +
+    (s.show ? showdownHtml(st, s) : settled ? revealHtml(st, s) : dockHtml(st, s)) +
     "</section>" +
     folioHtml(settled ? "The record" : "In the room");
 }
@@ -1049,7 +1051,9 @@ function transcriptHtml(st, s) {
     }
     return '<div class="bubble bubble-opp"><span class="bubble-who">' + esc(oppLabel) + "</span>" + esc(t.text) + "</div>";
   }).join("");
-  const aiBusy = s.inFlight || (!st.done && (!st.waitingFor || st.waitingFor.seat !== 0));
+  /* Once the hands are down the showdown is the state; a thinking chip under
+     it would be describing a moment that has already passed. */
+  const aiBusy = !s.show && (s.inFlight || (!st.done && (!st.waitingFor || st.waitingFor.seat !== 0)));
   if (aiBusy) {
     html += '<div class="bubble bubble-opp bubble-thinking"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>' +
       '<span class="thinking-text">' + esc(oppLabel) + " is at the table</span></div>";
@@ -1228,6 +1232,180 @@ function returnDock(d, dis, s) {
 function returnReadout(v, sent, pot) {
   const whole = sent > 0 && v >= sent ? ' · <b class="pos">they’re made whole</b>' : "";
   return "Send back <b>" + money(v) + "</b> of " + money(pot) + whole;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   THE SHOWDOWN
+   The one place in this app allowed to take its time. Everything else is
+   120ms of opacity precisely so that this lands. Both hands go down, the
+   room holds its breath, and then they turn over TOGETHER: sequential would
+   make the second card an afterthought, and the whole point is that neither
+   player knew what the other had done.
+
+   The result is in hand before the first frame. Nothing here waits on the
+   server for effect and nothing is faked: the beat is a beat, not a spinner.
+   Click anywhere to skip it.
+   ═══════════════════════════════════════════════════════════════════════ */
+const SHOW = { lock: 950, flip: 560, read: 820, pay: 760 };
+const SHOWDOWN_GAMES = { splitsteal: true };
+
+const wait = (ms) => new Promise((r) => setTimeout(r, Math.max(0, ms)));
+const TAKING = /STEAL|DEFECT|REJECT/i;
+
+/* A blind seat is lettered, so mark it with its own letter rather than the C
+   of Contestant. */
+function monogramOf(label) {
+  const seat = /^contestant\s+(\w)/i.exec(String(label || ""));
+  return (seat ? seat[1] : String(label || "?").trim().charAt(0)).toUpperCase();
+}
+
+function showdownOutcome(words) {
+  const took = words.map((w) => TAKING.test(w || ""));
+  if (took[0] && took[1]) return "burned";
+  if (took[0]) return "took-0";
+  if (took[1]) return "took-1";
+  return "shared";
+}
+
+function handHtml(side, label, word) {
+  return '<div class="hand hand-' + side + '">' +
+    '<span class="nameplate"><span class="monogram" aria-hidden="true">' +
+      esc(monogramOf(label)) + "</span>" +
+      '<span class="nameplate-who">' + esc(label) + "</span></span>" +
+    '<div class="flipper"><span class="face face-back" aria-hidden="true"></span>' +
+      '<span class="face face-front ' + (TAKING.test(word || "") ? "face-bad" : "face-good") + '">' +
+      esc(word || "") + "</span></div>" +
+  "</div>";
+}
+
+function showdownHtml(st, s) {
+  const show = s.show;
+  const rp = ((st.result && st.result.receipt) || {}).players || [];
+  const words = [0, 1].map((i) => (rp[i] && rp[i].words && rp[i].words[0]) || "");
+  const payoffs = (st.result && st.result.payoffs) || [0, 0];
+  const opp = st.players[1] || { label: "Them" };
+
+  return '<section class="showdown" data-phase="' + esc(show.phase) + '" data-outcome="' + showdownOutcome(words) + '" data-action="skip-showdown">' +
+    '<div class="showdown-table">' +
+      handHtml("you", "You", words[0]) +
+      '<div class="pot" aria-hidden="true">' +
+        '<span class="pot-label">the pot</span>' +
+        '<span class="pot-figure">' + money(100) + "</span>" +
+        '<span class="pot-slip pot-slip-l' + (payoffs[0] ? "" : " is-nil") + '">' + money(payoffs[0]) + "</span>" +
+        '<span class="pot-slip pot-slip-r' + (payoffs[1] ? "" : " is-nil") + '">' + money(payoffs[1]) + "</span>" +
+        '<span class="pot-strike"></span>' +
+      "</div>" +
+      handHtml("them", opp.label, words[1]) +
+    "</div>" +
+    '<p class="showdown-line" role="status">' +
+      esc(show.phase === "lock" ? (show.landed ? "Turning them over." : "Locked. Waiting on them.") : "") +
+    "</p></section>";
+}
+
+/* The hands are dealt face-down before the result exists, so the words and the
+   payoffs are written onto the backs of the cards afterwards, while they are
+   still hidden. Nothing here re-renders: the flip needs the same DOM nodes to
+   still be there, or the browser has nothing to animate from. */
+function fillShowdown(st) {
+  const root = document.querySelector(".showdown");
+  if (!root) return;
+  const rp = ((st.result && st.result.receipt) || {}).players || [];
+  const words = [0, 1].map((i) => (rp[i] && rp[i].words && rp[i].words[0]) || "");
+  const payoffs = (st.result && st.result.payoffs) || [0, 0];
+
+  root.dataset.outcome = showdownOutcome(words);
+  root.querySelectorAll(".face-front").forEach((el, i) => {
+    el.textContent = words[i] || "";
+    el.classList.toggle("face-bad", TAKING.test(words[i] || ""));
+    el.classList.toggle("face-good", !TAKING.test(words[i] || ""));
+  });
+  [".pot-slip-l", ".pot-slip-r"].forEach((sel, i) => {
+    const el = root.querySelector(sel);
+    if (!el) return;
+    el.textContent = money(payoffs[i]);
+    el.classList.toggle("is-nil", !payoffs[i]);
+  });
+}
+
+function setShowPhase(phase) {
+  const s = playState;
+  if (!s.show) return;
+  s.show.phase = phase;
+  const root = document.querySelector(".showdown");
+  if (root) root.dataset.phase = phase;
+  else renderPlayNow();
+}
+
+function setShowLine(text) {
+  const el = document.querySelector(".showdown-line");
+  if (el) el.textContent = text;
+}
+
+/* Falls back to the plain submit wherever the theatre would be a lie: reduced
+   motion, or a game whose choices are not simultaneous. An ultimatum responder
+   already knows the offer, so there is nothing to turn over. */
+async function decideStaged(payload) {
+  const s = playState;
+  if (s.inFlight || !s.matchId) return;
+  const st0 = s.match;
+  if (REDUCED || !st0 || !SHOWDOWN_GAMES[st0.game]) return sendInput(payload);
+
+  const token = ++s.showToken;
+  const live = () => s.showToken === token && routePath() === "/play";
+  s.show = { phase: "lock", landed: false };
+  s.inFlight = true;
+  renderPlayNow();
+  /* The transcript has done its job; the table takes the screen. Without this
+     the entire reveal plays below the fold on a 900px laptop. */
+  const table = document.querySelector(".showdown");
+  if (table) table.scrollIntoView({ block: "center", behavior: REDUCED ? "auto" : "smooth" });
+  const lockedAt = Date.now();
+
+  let st;
+  try {
+    st = await api("/api/match/" + encodeURIComponent(s.matchId) + "/input", { body: payload });
+  } catch (err) {
+    if (live()) { s.show = null; s.inFlight = false; refusal(err, "The table hiccuped. Try that again."); renderPlayNow(); }
+    return;
+  }
+  if (!live()) return;
+  s.match = st; s.dockVal = null; s.refetchN = 0;
+
+  if (st.done && st.result) {
+    /* A slow model call EATS the held beat instead of adding to it, so the
+       pause is the same length whether they answered in 200ms or in two
+       seconds. Waiting is not drama. The hold is. */
+    s.show.landed = true;
+    fillShowdown(st);
+    setShowLine("Turning them over.");
+    await wait(lockedAt + SHOW.lock - Date.now());
+    if (!live()) return;
+
+    setShowPhase("flip");
+    setShowLine("");
+    await wait(SHOW.flip + SHOW.read);
+    if (!live()) return;
+
+    setShowPhase("pay");
+    await wait(SHOW.pay);
+    if (!live()) return;
+  }
+
+  s.show = null;
+  s.inFlight = false;
+  renderPlayNow();
+  maybeRefetch();
+}
+
+/* Never trap anyone inside an animation. */
+function skipShowdown() {
+  const s = playState;
+  if (!s.show) return;
+  s.showToken++;
+  s.show = null;
+  s.inFlight = false;
+  renderPlayNow();
+  maybeRefetch();
 }
 
 /* — the reveal — */
@@ -1658,13 +1836,14 @@ document.addEventListener("click", (e) => {
     case "pick-opp": playState.opponentId = el.dataset.id; renderPlayNow(); break;
     case "set-blind": playState.blind = el.dataset.on === "1"; renderPlayNow(); break;
     case "reveal-opponent": revealOpponent(); break;
+    case "skip-showdown": skipShowdown(); break;
     case "toggle-power": togglePower(el.dataset.side, el.dataset.id); break;
     case "enter-arena": enterArena(); break;
     case "decide": {
       const payload = { decision: el.dataset.decision };
       const line = document.getElementById("dock-line");
       if (line && line.value.trim()) payload.text = line.value.trim().slice(0, 280);
-      sendInput(payload);
+      decideStaged(payload);
       break;
     }
     case "make-offer": {

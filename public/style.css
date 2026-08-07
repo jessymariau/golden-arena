@@ -1368,3 +1368,152 @@ a.chip:hover { border-color: var(--text-secondary); color: var(--text-primary); 
   }
   html { scroll-behavior: auto; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   THE SHOWDOWN
+   Two hands face-down, a held beat, then they turn over together. This is
+   the only sustained motion in the product; §6 of DESIGN.md cut everything
+   else back to near-silence so that this one gesture lands.
+   ══════════════════════════════════════════════════════════════════════ */
+.showdown {
+  position: relative;
+  padding: var(--sp-7) var(--sp-4) var(--sp-6);
+  display: flex; flex-direction: column; align-items: center; gap: var(--sp-5);
+  cursor: default;
+}
+/* the overhead pool, tightening while the room waits */
+.showdown::before {
+  content: ""; position: absolute; inset: -8% -4%;
+  background: radial-gradient(58% 62% at 50% 42%, rgba(239,231,216,.09), transparent 70%);
+  transform: scale(1.18); opacity: 0;
+  transition: transform 1100ms var(--ease-out), opacity 700ms var(--ease-out);
+  pointer-events: none;
+}
+.showdown[data-phase="lock"]::before { transform: scale(1); opacity: 1; }
+.showdown[data-phase="flip"]::before,
+.showdown[data-phase="pay"]::before { transform: scale(1.05); opacity: 1; }
+
+.showdown-table {
+  display: grid; grid-template-columns: 1fr auto 1fr;
+  align-items: center; justify-items: center;
+  gap: clamp(var(--sp-4), 4vw, var(--sp-7));
+  width: 100%; max-width: 620px;
+  perspective: 1100px;
+}
+
+/* ── the nameplate: presence without a face ── */
+.hand { display: flex; flex-direction: column; align-items: center; gap: var(--sp-3); min-width: 0; }
+.nameplate { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); min-width: 0; max-width: 100%; }
+.monogram {
+  display: grid; place-items: center;
+  width: 30px; height: 30px;
+  font-family: var(--font-stamp); font-size: var(--fs-sm); line-height: 1;
+  color: var(--text-secondary);
+  border: 1px solid var(--foil-rule);
+  border-radius: var(--r);
+}
+.nameplate-who {
+  font-size: var(--fs-xs); letter-spacing: var(--track-label); text-transform: uppercase;
+  color: var(--text-secondary); text-align: center;
+  max-width: 20ch; overflow-wrap: anywhere; text-wrap: balance;
+}
+
+/* ── the card ── */
+.flipper {
+  position: relative;
+  width: clamp(88px, 24vw, 132px); aspect-ratio: 3 / 4;
+  transform-style: preserve-3d;
+  transition: transform var(--flip-ms, 560ms) var(--ease-expo);
+}
+.showdown[data-phase="flip"] .flipper,
+.showdown[data-phase="pay"] .flipper { transform: rotateY(180deg); }
+
+.face {
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  border-radius: var(--r);
+  backface-visibility: hidden; -webkit-backface-visibility: hidden;
+  text-align: center; padding: var(--sp-2);
+}
+.face-back {
+  background: var(--surface-inset);
+  border: 1px solid var(--rule-strong);
+  background-image: repeating-linear-gradient(135deg,
+    var(--foil-rule) 0 1px, transparent 1px 7px);
+  background-blend-mode: overlay;
+  opacity: .92;
+}
+.face-front {
+  transform: rotateY(180deg);
+  background: var(--surface-inset);
+  border: 1px solid currentColor;
+  font-family: var(--font-stamp);
+  font-size: clamp(.82rem, 3.1vw, 1.12rem);
+  letter-spacing: .05em; text-transform: uppercase; line-height: 1.05;
+}
+.face-good { color: var(--sig-good); }
+.face-bad  { color: var(--sig-bad); }
+
+/* ── the pot: an object on the table, not a caption ── */
+.pot { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: var(--sp-1); min-width: 5.5ch; }
+.pot-label {
+  font-size: var(--fs-xs); letter-spacing: var(--track-label);
+  text-transform: uppercase; color: var(--text-tertiary);
+  transition: opacity 400ms var(--ease-out);
+}
+.pot-figure {
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  font-size: var(--fs-xl); color: var(--text-primary); line-height: 1;
+  transition: opacity 420ms var(--ease-out), filter 520ms var(--ease-out);
+}
+.pot-slip {
+  position: absolute; top: 50%; left: 50%;
+  margin-top: -.5em;
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  font-size: var(--fs-lg); line-height: 1; white-space: nowrap;
+  opacity: 0; transform: translate(-50%, 0);
+  transition: opacity 360ms var(--ease-out), transform 700ms var(--ease-expo);
+  pointer-events: none;
+}
+.pot-slip.is-nil { display: none; }
+.pot-strike {
+  position: absolute; top: 50%; left: -6%; width: 112%; height: 2px;
+  background: var(--sig-bad);
+  transform: scaleX(0); transform-origin: left center;
+  transition: transform 460ms var(--ease-expo);
+}
+
+/* the money moves, and only then */
+.showdown[data-phase="pay"] .pot-label { opacity: 0; }
+.showdown[data-phase="pay"] .pot-slip { opacity: 1; }
+.showdown[data-phase="pay"] .pot-slip-l { transform: translate(-50%, 0) translateX(clamp(-86px, -8vw, -30px)); color: var(--sig-good); }
+.showdown[data-phase="pay"] .pot-slip-r { transform: translate(-50%, 0) translateX(clamp(30px, 8vw, 86px)); color: var(--sig-good); }
+.showdown[data-phase="pay"] .pot-figure { opacity: 0; }
+
+/* one steals: the whole pot goes their way, and it is not a good colour */
+.showdown[data-outcome="took-0"][data-phase="pay"] .pot-slip-l,
+.showdown[data-outcome="took-1"][data-phase="pay"] .pot-slip-r { color: var(--sig-bad); }
+
+/* both steal: the entry is struck out, the way a ledger cancels one */
+.showdown[data-outcome="burned"][data-phase="pay"] .pot-slip { opacity: 0; }
+.showdown[data-outcome="burned"][data-phase="pay"] .pot-figure { opacity: .45; filter: grayscale(1); }
+.showdown[data-outcome="burned"][data-phase="pay"] .pot-strike { transform: scaleX(1); }
+
+.showdown-line {
+  min-height: 1.4em; margin: 0;
+  font-size: var(--fs-sm); color: var(--text-secondary);
+  letter-spacing: .01em;
+}
+
+@media (max-width: 460px) {
+  .showdown { padding: var(--sp-6) var(--sp-2) var(--sp-5); }
+  .showdown-table { gap: var(--sp-3); }
+  .monogram { width: 26px; height: 26px; }
+  .nameplate-who { max-width: 11ch; }
+  /* a narrower gap needs a narrower note, or the money lands on the card */
+  .pot-slip { font-size: var(--fs-md); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .showdown::before, .flipper, .pot-figure, .pot-slip, .pot-strike, .pot-label { transition: none; }
+}
