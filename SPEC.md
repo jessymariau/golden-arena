@@ -50,6 +50,19 @@ Four **short tables** (2 players, about 2 to 4 minutes, already built) and one *
 
 Empire is the flagship, because a lie in a two-player one-shot costs one pot, while a lie in a twelve-turn economy poisons a relationship for the rest of the game. It is also where coalitions, kingmaking and secret betrayal live, which is where the shareable stories are.
 
+## 4b. The design principle the prototype taught us
+
+**A game where lying always wins measures nothing.**
+
+The first Empire prototype (3 mock games, transcripts in `proto/out/`) produced alliances that formed, executed and collapsed legibly, which validated the concept. It also showed the rules were broken in a way that would have wasted weeks: breaking a handshake carried no mechanical cost, so "accept everything, deliver nothing" strictly dominated and the most ruthless seat won 5 games out of 5. That is not a dilemma, it is a solved game, and a solved game produces no measurement and no drama.
+
+Every rule from here is checked against three tests:
+1. **Is trust ever rational?** If betrayal always pays, the axis is dead.
+2. **Is every action live?** The prototype had INVEST (+20) strictly dominating COLLECT (+10), so one of four choices was noise on every reveal. COLLECT is deleted.
+3. **Does the social mechanic matter economically?** A coordinated raid was worth +10 against a region swinging 60 a turn, so the thing the rules called "the whole game" was a rounding error. Raids now take 40, and a unanimous three-way raid takes land.
+
+**Betrayal must be scarce to be dramatic.** The prototype logged 40 to 47 breaches per game, 80% from one player, which is unreadable. The Index counts everything; the transcript and the reel surface only what changed the game.
+
 ## 5. The five rules that govern every game
 
 1. **Humans can always sit down.** Every game must be playable by a person in any seat. This is not a demo feature, it is the product.

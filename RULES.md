@@ -61,13 +61,15 @@ The long game. About twenty minutes. This is where secret alliances live.
 
 ### The board
 
-**Twelve territories, in four regions of three.** Every player starts with three territories, deliberately scattered, so **nobody starts with a complete region.**
+**Twelve territories, in four regions of three.** Everyone starts with three, and **nobody starts with a complete region.**
 
 - Each territory pays you **10 coins a turn**.
 - Hold **all three** of a region and it pays **90 a turn** instead of 30.
 - Everyone starts with **50 coins**.
 
-**Land only ever changes hands by agreement.** No attack takes territory. So the only route to a region, and the only route to winning, runs through somebody agreeing to hand you the piece you need. **You have to be trusted to win.**
+**The four seats are deliberately unequal.** Two players each hold the territory the other one needs, so the obvious pact between them would put both out of reach of everyone else. One player is the **broker**: they hold two territories other people need and need nothing themselves. The last is the **supplicant**: no path to a region, but coins to spend. Nobody's position is the same, so nobody's route to winning is the same.
+
+**Land only ever changes hands by agreement.** No attack takes territory, except in one case (see the three-way raid below). So the route to a region, and to winning, runs through somebody agreeing to hand you the piece you need. **You have to be trusted to win.**
 
 ### A turn (everyone at once)
 
@@ -75,27 +77,37 @@ The long game. About twenty minutes. This is where secret alliances live.
 
 **2 · Deal.** Offer anything: land, coins, a promise about next turn. Every deal is one of two kinds.
 - **Contract** — costs 5 coins, and it is enforced automatically. It cannot be broken.
-- **Handshake** — free, and worth exactly what their word is worth.
+- **Handshake** — free, and worth what their word is worth.
 
 Choosing the handshake to save 5 coins is itself a decision the Index records.
 
-**3 · Act.** Everyone secretly picks one:
+**3 · Act.** Everyone secretly picks one of three:
 - **INVEST** — take 20 coins.
-- **COLLECT** — take 10 coins, safely.
 - **FORTIFY** — nobody can raid you this turn.
 - **RAID** someone — see below.
 
-**4 · Reveal.** All four actions are shown at once. Income pays out. The turn ends.
+**4 · Reveal.** All four actions are shown at once, every promise that came due is shown **kept or unkept beside it**, income pays out, and the turn ends.
 
 ### The raid, which is the whole game
 
 **A raid only works if two or more players hit the same person on the same turn.**
 
-- Two or more raiders on the same target → each raider takes **30 coins** from them.
+- Two or more raiders on the same target → each raider takes **40 coins** from them.
 - A raider who turns up **alone** → the raid fails and they lose **15 coins**, in public.
 - If the target **fortified** → every raider fails and loses 15.
+- **All three others raid the same person** → instead of coins, they take a **territory** of their choosing. This is the only way land moves without agreement, and it takes the whole table to do it.
 
-So you cannot attack by yourself. You have to find a partner, agree a target in private, and trust them to be there. And they can agree, take your plan, and simply not turn up. Or agree to hit someone else with you, and hit you instead.
+So you cannot attack by yourself. You have to find a partner, agree a target in private, and trust them to be there. They can agree, take your plan, and simply not turn up, leaving you exposed and 15 coins lighter in front of everyone. Or agree to hit someone else with you, and hit you instead.
+
+### Being MARKED, which is what a lie costs
+
+Break a handshake you accepted — take the land and never pay, promise a raid and skip it, promise to fortify and don't — and you are **marked in public for two turns**.
+
+**While you are marked, a lone raider succeeds against you.** Anyone can come for you by themselves, and all three of them can come in the same turn.
+
+This is the price of a broken word, and it is why the table talk matters: naming a defaulter out loud is not commentary, it is aiming.
+
+*Why this rule exists: without it, the honest answer to every deal is "accept and default", and a game where lying always wins measures nothing.*
 
 ### Winning
 
