@@ -32,6 +32,8 @@ Three consequences follow, and they are the spine of the product:
 
 Same rules, same engine, same scoring. The benchmark is the arena with the humans removed and the repetitions turned up.
 
+**Seat rotation is mandatory in benchmark mode, and the seat effect is a published control.** Round two measured the seating chart mattering roughly **three times more than the personality**: across 24 games, seat 1 won 50-67% while seat 0 won 4%, against archetype win rates of 42/29/29. An unrotated run would have reported "trust now dominates" purely because the cooperative archetype happened to sit in the strong chair. Benchmark mode already runs N repetitions, so rotating seats across them is free. **Every published result reports per-seat win rate alongside per-model, and a run where the seat spread exceeds the model spread is reported as invalid rather than as a finding.** A leaderboard that is secretly measuring the furniture is worse than no leaderboard.
+
 **Presets are canon, custom is sandbox.** One official ruleset per game feeds the public Index. Everything is tweakable in a sandbox, but sandbox results are marked unofficial and never enter the canonical board. This protects the number from meaning nothing while still giving people the toy. Toggles are also content: "what happens when nobody can talk privately" is a one-click ablation with an interesting delta.
 
 **Cost model: open the harness, host the board.** The engine is MIT and runs anywhere, so a lab or an enterprise runs frontier models on their own compute. We run the cheap tier and own the scoreboard and the methodology. We never pay the frontier bill. This is the same open-core logic as Booboo.
@@ -61,7 +63,11 @@ Every rule from here is checked against three tests:
 2. **Is every action live?** The prototype had INVEST (+20) strictly dominating COLLECT (+10), so one of four choices was noise on every reveal. COLLECT is deleted.
 3. **Does the social mechanic matter economically?** A coordinated raid was worth +10 against a region swinging 60 a turn, so the thing the rules called "the whole game" was a rounding error. Raids now take 40, and a unanimous three-way raid takes land.
 
-**Betrayal must be scarce to be dramatic.** The prototype logged 40 to 47 breaches per game, 80% from one player, which is unreadable. The Index counts everything; the transcript and the reel surface only what changed the game.
+**Betrayal must be scarce to be dramatic.** Round one logged 40 to 47 breaches per game, 80% from one player, which is unreadable. Round two halved it to 19. The Index counts everything; the transcript and the reel surface only what changed the game.
+
+**Round two results, for the record.** Pure defection fell from winning 5 games out of 5 to 42% against an even 25%, so MARKED did most of its job. Drama density went from 3 gripping turns in 12 to 4 or 5. Two things it got wrong and round three fixes: the penalty **rewarded** its target, because a marked player who fortified while all three others attacked came out 25 coins ahead (observed 34 times in 6 games), so accusing is now free; and a flat two-turn mark priced a stolen territory the same as a skipped raid, so the mark now scales and repeat offences extend it.
+
+**Open, unfixed, and blocking a real benchmark: seat 0 wins 4%.** It structurally holds the asset seat 1 needs while its own key sits with a player who needs nothing from it, so it sells its only leverage to fund a purchase it can never complete. Rotation (§3) stops this contaminating results, but the board itself still needs redesigning so every seat has leverage over somebody. Do not publish an Index off this board until it does.
 
 ## 5. The five rules that govern every game
 
@@ -83,7 +89,9 @@ Per model, aggregated across every recorded match, plus a **Humans** row.
 - **Debt honour** — handshake deals delivered versus defaulted.
 - **Predation** — share of raids aimed at the weakest player rather than the leader.
 
-**Honesty policy, non-negotiable.** Every axis is computed from **mechanical, checkable facts in the action log**, never from an LLM judging whether something felt like a lie. Empire is designed so the interesting betrayals are all mechanically detectable: promised land and never transferred it; promised the same land to two players; agreed to raid together and did not act; agreed to raid X and raided the partner instead; promised to fortify and did not. Axes display their sample size and stay hidden until they have data. No fake precision.
+**Honesty policy, non-negotiable.** Every axis is computed from **mechanical, checkable facts in the action log**, never from an LLM judging whether something felt like a lie.
+
+**Every breach code ships with a false-positive test. This is a hard gate.** The round-two prototype logged a player as having taken land and never paid for a theft that never happened: an outstanding handshake failed to encumber the territory, the same land was sold twice to the same buyer, the buyer paid in full under a contract, and the stale handshake stayed open and fired the detector. Roughly **one logged betrayal in ten was fabricated**, and it was invisible until a single line was traced by hand. For an instrument whose entire claim is that betrayals are facts rather than opinions, a false accusation is the worst defect available to us: it is indistinguishable from the product working, and it is exactly what a lab would find first. No breach code enters the Index until someone has answered, in writing, "could this fire on an innocent player?" Empire is designed so the interesting betrayals are all mechanically detectable: promised land and never transferred it; promised the same land to two players; agreed to raid together and did not act; agreed to raid X and raided the partner instead; promised to fortify and did not. Axes display their sample size and stay hidden until they have data. No fake precision.
 
 ## 7. What the viewer looks at
 

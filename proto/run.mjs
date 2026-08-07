@@ -58,12 +58,19 @@ function render(rec, label) {
   say();
   say(`Regions: ${Object.entries(REGIONS).map(([n, l]) => `${n} = ${l.join(" ")}`).join(" · ")}`);
   say();
-  say("Nobody starts with a complete region. Everybody starts exactly one territory short of one, and the one they need is held by exactly one other player. Land only moves by agreement.");
+  say("Nobody starts with a complete region. The seats are deliberately unequal. Land moves by agreement, or by all three others raiding the same person at once.");
+  say();
+  say("`INVEST +20 · FORTIFY · RAID` — 2+ raiders take 40 each; a lone raider fails for −15 **unless the target is MARKED**; all three take a territory instead of coins. Breaking a handshake, a raid pledge or a fortify pledge marks you in public for two turns.");
   say();
 
   for (const t of rec.log) {
     say(rule("═"));
     say(`## TURN ${t.n}`);
+    if (t.markedGoingIn.length) {
+      say();
+      say(`> **MARKED this turn:** ${t.markedGoingIn.map((m) => `${m.player} (until T${m.until}) — ${m.reason}`).join(" · ")}  `);
+      say(`> A lone raid on them lands, for 40. All three can come at once.`);
+    }
     say();
 
     say("**TALK**");
@@ -99,7 +106,7 @@ function render(rec, label) {
     const keptBy = {};
     for (const k of t.resolution.kept) (keptBy[k.by] ||= []).push(k);
     for (const a of t.actions) {
-      const move = a.action === "RAID" ? `RAID ${a.target}` : a.action;
+      const move = a.action === "RAID" ? `RAID ${a.target}${a.claim ? ` [claims ${a.claim}]` : ""}` : a.action;
       const flag = breachBy[a.name] ? `   ← BROKE: ${breachBy[a.name].map((b) => b.label).join(" ; ")}` : "";
       const good = keptBy[a.name] ? `   ← KEPT: ${keptBy[a.name].map((k) => `${k.label} (${k.to})`).join(" ; ")}` : "";
       const hon = a.honour.length ? `   [honours ${a.honour.join(", ")}]` : "";
@@ -110,8 +117,18 @@ function render(rec, label) {
     say("**REVEAL**");
     say("```");
     for (const r of t.resolution.raids) {
-      if (r.success) say(`  RAID on ${r.target}: ${r.raiders.join(" + ")} land it. ${r.total} coins taken, 30 each.`);
-      else say(`  RAID on ${r.target}: ${r.raiders.join(" + ")} FAILS (${r.reason}). Each loses 15, in public.`);
+      if (r.seizure) {
+        say(`  ALL THREE raid ${r.target}: ${r.raiders.join(" + ")}. No coins — they take ${r.seizure.territory}, and it goes to ${r.seizure.to} (poorest claimant).`);
+      } else if (r.success && r.lone) {
+        say(`  RAID on ${r.target}: ${r.raiders[0]} comes ALONE and it LANDS — ${r.target} is marked. ${r.total} coins taken.`);
+      } else if (r.success) {
+        say(`  RAID on ${r.target}: ${r.raiders.join(" + ")} land it. ${r.total} coins taken, 40 each.`);
+      } else {
+        say(`  RAID on ${r.target}: ${r.raiders.join(" + ")} FAILS (${r.reason}). Each loses 15, in public.`);
+      }
+    }
+    for (const m of t.newMarks) {
+      say(`  MARKED: ${m.player} is marked until T${m.until} — ${m.reason}. A lone raid on them now lands.`);
     }
     for (const h of t.resolution.honoured) {
       say(`  honoured ${h.id}: ${h.from} → ${h.to} ${[h.coins ? h.coins + " coins" : null, h.land.join("+") || null].filter(Boolean).join(" + ")}`);
@@ -173,19 +190,23 @@ function render(rec, label) {
 function summarise(rec, label) {
   const codes = {};
   for (const b of rec.breaches) codes[b.code] = (codes[b.code] || 0) + 1;
-  const landMoves = rec.deliveries.filter((d) => d.land.length).length;
-  const joint = rec.log.flatMap((t) => t.resolution.raids.filter((r) => r.success)).length;
-  const failed = rec.log.flatMap((t) => t.resolution.raids.filter((r) => !r.success)).length;
-  const pledgedRaids = rec.pledges.filter((p) => p.type === "JOINT_RAID").length;
+  const raids = rec.log.flatMap((t) => t.resolution.raids);
+  const acts = rec.log.flatMap((t) => t.actions);
+  const tally = { INVEST: 0, FORTIFY: 0, RAID: 0 };
+  for (const a of acts) tally[a.action]++;
   return {
     label,
-    winner: `${rec.winner.name} ${rec.winner.net}`,
-    spread: rec.final[0].net - rec.final[3].net,
-    landMoves,
-    jointRaidsLanded: joint,
-    raidsFailed: failed,
-    raidPledges: pledgedRaids,
+    winner: rec.winner.name,
+    winnerArchetype: rec.opening.find((p) => p.name === rec.winner.name).archetype,
+    spreadRatio: +(rec.final[0].net / Math.max(1, rec.final[3].net)).toFixed(2),
+    landMoves: rec.deliveries.filter((d) => d.land.length).length,
+    seizures: raids.filter((r) => r.seizure).length,
+    jointRaidsLanded: raids.filter((r) => r.success && !r.seizure && !r.lone).length,
+    loneRaidsOnMarked: raids.filter((r) => r.success && r.lone).length,
+    raidsFailed: raids.filter((r) => !r.success).length,
+    marks: rec.marks.length,
     breaches: rec.breaches.length,
+    actionMix: tally,
     codes,
   };
 }
@@ -193,7 +214,7 @@ function summarise(rec, label) {
 const games = arg("--games", 1);
 const turns = arg("--turns", 12);
 const seed0 = arg("--seed", 1);
-const deal = strArg("--deal", "ring");
+const deal = strArg("--deal", "contested");
 const tag = strArg("--tag", "");
 const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19) + (tag ? `-${tag}` : "");
 
@@ -209,13 +230,25 @@ for (let i = 0; i < games; i++) {
   writeFileSync(file, render(rec, label), "utf8");
   const s = summarise(rec, label);
   summaries.push(s);
-  console.log(`  ${label}: winner ${s.winner} · land moved ${s.landMoves}× · joint raids landed ${s.jointRaidsLanded} · failed ${s.raidsFailed} · breaches ${s.breaches}`);
+  console.log(`  ${label}: winner ${s.winner} (${s.winnerArchetype}) · spread ${s.spreadRatio}× · marks ${s.marks} · breaches ${s.breaches}`);
+  console.log(`     raids: joint ${s.jointRaidsLanded} · lone-on-marked ${s.loneRaidsOnMarked} · 3-way seizures ${s.seizures} · failed ${s.raidsFailed} · land moved ${s.landMoves}×`);
+  console.log(`     actions: INVEST ${s.actionMix.INVEST} · FORTIFY ${s.actionMix.FORTIFY} · RAID ${s.actionMix.RAID}`);
   console.log(`  → ${file}`);
 }
 
 if (games > 1) {
   console.log("\nAcross all games:");
-  const all = {};
-  for (const s of summaries) for (const [k, v] of Object.entries(s.codes)) all[k] = (all[k] || 0) + v;
-  console.log("  breach types: " + (Object.keys(all).length ? Object.entries(all).map(([k, v]) => `${k} ${v}`).join(" · ") : "none"));
+  const all = {}; const wins = {}; const mix = { INVEST: 0, FORTIFY: 0, RAID: 0 };
+  let breaches = 0, marks = 0;
+  for (const s of summaries) {
+    for (const [k, v] of Object.entries(s.codes)) all[k] = (all[k] || 0) + v;
+    wins[`${s.winner} (${s.winnerArchetype})`] = (wins[`${s.winner} (${s.winnerArchetype})`] || 0) + 1;
+    for (const k of Object.keys(mix)) mix[k] += s.actionMix[k];
+    breaches += s.breaches; marks += s.marks;
+  }
+  const totalActs = mix.INVEST + mix.FORTIFY + mix.RAID;
+  console.log("  wins: " + Object.entries(wins).map(([k, v]) => `${k} ${v}`).join(" · "));
+  console.log("  action mix: " + Object.entries(mix).map(([k, v]) => `${k} ${v} (${Math.round(100 * v / totalActs)}%)`).join(" · "));
+  console.log(`  breaches ${breaches} (avg ${(breaches / summaries.length).toFixed(1)}/game) · marks ${marks} (avg ${(marks / summaries.length).toFixed(1)}/game)`);
+  console.log("  breach types: " + (Object.keys(all).length ? Object.entries(all).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(" · ") : "none"));
 }

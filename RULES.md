@@ -101,11 +101,15 @@ So you cannot attack by yourself. You have to find a partner, agree a target in 
 
 ### Being MARKED, which is what a lie costs
 
-Break a handshake you accepted — take the land and never pay, promise a raid and skip it, promise to fortify and don't — and you are **marked in public for two turns**.
+Break a handshake you accepted — take the land and never pay, promise a raid and skip it, promise to fortify and don't — and you are **marked in public**. Two turns for a small promise; **four** if what you walked off with was land, or a debt over 200 coins.
 
 **While you are marked, a lone raider succeeds against you.** Anyone can come for you by themselves, and all three of them can come in the same turn.
 
-This is the price of a broken word, and it is why the table talk matters: naming a defaulter out loud is not commentary, it is aiming.
+**Coming for a marked player is free.** A raider who hits a marked target loses nothing, even if the target fortified. Naming a defaulter out loud is not commentary, it is aiming, and aiming should not cost you.
+
+**Breaking your word while already marked adds two more turns.** It does not start the clock again.
+
+You can still fortify while marked, and you probably should. But every turn spent defending is a turn not spent earning, which is the real price of a broken word.
 
 *Why this rule exists: without it, the honest answer to every deal is "accept and default", and a game where lying always wins measures nothing.*
 

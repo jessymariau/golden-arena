@@ -60,8 +60,15 @@ export const DEALS = {
 
 const TERRITORY_SCORE = 50;
 const CONTRACT_FEE = 5;
-const RAID_TAKE = 30;
+const RAID_TAKE = 40;
 const RAID_PENALTY = 15;
+const MARK_TURNS = 2;
+
+// Breaking one of these three marks you in public. Contradictions and
+// double-sales still feed the Index but do not mark — RULES names exactly
+// these: took the land and never paid, promised a raid and skipped it,
+// promised to fortify and did not.
+const MARKING_CODES = new Set(["NO_SHOW", "PARTNER_RAID", "FORTIFY_LIE", "HANDSHAKE_DEFAULT"]);
 
 function regionOf(terr) {
   for (const [name, list] of Object.entries(REGIONS)) if (list.includes(terr)) return name;
@@ -104,7 +111,7 @@ export function archetypeName(modelId) {
 // ---------------------------------------------------------------------------
 // state
 // ---------------------------------------------------------------------------
-export function createGame({ players, turns = 12, seed = 1, deal = "ring" }) {
+export function createGame({ players, turns = 12, seed = 1, deal = "contested" }) {
   const OPENING_DEAL = DEALS[deal] || DEALS.ring;
   return {
     turns,
@@ -121,15 +128,27 @@ export function createGame({ players, turns = 12, seed = 1, deal = "ring" }) {
       coins: 50,
       land: [...OPENING_DEAL[seat]],
       rng: mulberry32(seed * 1013 + seat * 7919 + 17),
-      memory: { events: [] }, // compacted per-agent record (SPEC §8)
+      // compacted per-agent record (SPEC §8). grievances are structured so an
+      // accusation can cite the turn and the breach instead of waving at it.
+      memory: { events: [], grievances: [] },
     })),
     turnNo: 0,
     log: [], // one entry per turn
     offers: [],
     pledges: [],
     obligations: [],
+    marks: [], // {player, turn, until, reason} — public, and it is aiming data
     deliveries: [], // every land/coin transfer, with its cause
   };
+}
+
+// Marked during turns turn+1 .. turn+MARK_TURNS. You cannot be punished on the
+// same turn you broke it — the breach and the raid resolve simultaneously.
+function marksActive(g, turnNo = g.turnNo) {
+  return g.marks.filter((m) => turnNo > m.turn && turnNo <= m.until);
+}
+function isMarked(g, name, turnNo = g.turnNo) {
+  return marksActive(g, turnNo).some((m) => m.player === name);
 }
 
 const byName = (g, name) => g.players.find((p) => p.name === name);
@@ -175,12 +194,15 @@ function standings(g) {
 // ---------------------------------------------------------------------------
 const RULES_BLOCK = `EMPIRE. Four players, twelve turns. You start with 50 coins and 3 territories.
 INCOME each turn: 10 coins per territory. Hold ALL THREE territories of a region and those three pay 90 instead of 30. A region is the whole game.
-LAND NEVER MOVES BY FORCE. No attack takes territory. The only way to get the land you need is for the person holding it to agree to hand it over. You cannot win alone, and you cannot attack alone.
-EACH TURN: 1 TALK, 2 DEAL, 3 ACT (secret), 4 REVEAL (all four actions shown at once).
-ACT is exactly one of: INVEST (+20 coins) · COLLECT (+10 coins) · FORTIFY (nobody can raid you this turn) · RAID <player>.
-RAID: two or more raiders hitting the SAME target each take 30 coins from them. A raider who turns up alone fails and loses 15, in public. If the target fortified, every raider fails and loses 15.
-So a raid needs a partner who actually shows up. They can agree, take your plan, and simply not turn up. Or agree to hit someone with you, and hit you instead.
+THE FOUR SEATS ARE UNEQUAL ON PURPOSE. Two players hold the territory the other one needs. One is the BROKER: holds two territories other people need, needs nothing. One is the SUPPLICANT: no path to a region, only coins. Your route to winning is not the same as anyone else's.
+LAND ALMOST NEVER MOVES BY FORCE. The route to a region runs through somebody agreeing to hand you the piece you need. You have to be trusted to win.
+EACH TURN: 1 TALK, 2 DEAL, 3 ACT (secret), 4 REVEAL (all four actions shown at once, and every promise that came due is shown kept or unkept beside it).
+ACT is exactly one of THREE: INVEST (+20 coins) · FORTIFY (nobody can raid you this turn) · RAID <player>.
+RAID: two or more raiders hitting the SAME target each take 40 coins from them. A raider who turns up alone fails and loses 15, in public. If the target fortified, every raider fails and loses 15.
+ALL THREE of the others raiding the same person take a TERRITORY from them instead of coins. It is the only way land moves without agreement, and it takes the whole table.
+So a raid needs a partner who actually shows up. They can agree, take your plan, and not turn up — leaving you 15 lighter in front of everyone. Or agree to hit someone with you, and hit you instead.
 DEALS: a CONTRACT costs 5 coins and executes automatically the moment it is accepted — it cannot be broken. A HANDSHAKE is free and only happens if the person decides to honour it, which you will not know until the reveal.
+BEING MARKED — THE PRICE OF A BROKEN WORD. Break a handshake you accepted, promise a joint raid and skip it, or promise to fortify and not: you are MARKED IN PUBLIC FOR TWO TURNS. While you are marked, A LONE RAIDER SUCCEEDS AGAINST YOU — anyone can come for you alone, and all three of them can come in the same turn, for 40 each. Fortifying still protects you. Naming a defaulter at the table is not commentary, it is aiming.
 WINNING: most coins + land after turn 12. Each territory counts 50 at the end. Second place is losing.`;
 
 const SECRECY_BLOCK = `PRIVATE MESSAGES ARE INVISIBLE. Only you and the one person you send to will ever see them. The other two cannot see them, cannot be told about them by the game, and will never be shown them. You may tell different people different things on the same turn, and nothing in the game will reveal that you did.`;
@@ -203,10 +225,13 @@ function stateBrief(g, me) {
   lines.push("PUBLIC STATE (everyone sees this):");
   for (const p of g.players) {
     const done = completeRegions(p);
+    const mark = marksActive(g).find((m) => m.player === p.name);
     lines.push(
-      `  ${p.name}: ${p.coins} coins · ${p.land.join(" ")} · income ${income(p)}/turn${done.length ? ` · COMPLETE REGION: ${done.join(", ")}` : ""} · net ${netWorth(p)}`
+      `  ${p.name}: ${p.coins} coins · ${p.land.join(" ")} · income ${income(p)}/turn${done.length ? ` · COMPLETE REGION: ${done.join(", ")}` : ""} · net ${netWorth(p)}${mark ? ` · ** MARKED until turn ${mark.until} (${mark.reason}) — you can raid them ALONE and it works **` : ""}`
     );
   }
+  const marked = marksActive(g).map((m) => m.player);
+  if (marked.includes(me.name)) lines.push(`YOU ARE MARKED. Any one of them can raid you alone this turn and it will land. All three can come at once. Fortify, or pay for it.`);
   return lines.join("\n");
 }
 
@@ -294,6 +319,7 @@ async function phaseTalk(g) {
       memoryBrief(g, me),
       channelBrief(g, me),
       `TALK PHASE. Write ONE message to the whole table (max ${PUBLIC_CAP} words) and up to 2 private messages (max ${PRIVATE_CAP} words each) to whoever you choose. Terse. Say something that moves money or land — a target, a price, a name.`,
+      `IF YOU ACCUSE SOMEONE, CITE THE TURN AND THE EXACT BREACH. "T2, you took E1 and never paid the 385" — not "you gave me your word". A vague accusation is worth nothing; a specific one is aiming, because a marked player can be raided alone. Your record above has the turn numbers.`,
       `JSON: {"public":"...","private":[{"to":"NAME","text":"..."}]}`,
     ].join("\n\n");
     const got = await ask(g, me, prompt, (o) => typeof o.public === "string");
@@ -330,7 +356,7 @@ function describeOffer(o) {
 }
 
 function myObligations(g, me) {
-  return g.obligations.filter((o) => o.debtor === me.name && !o.honoured);
+  return g.obligations.filter((o) => o.debtor === me.name && !o.honoured && !o.void);
 }
 
 async function phaseDeal(g) {
@@ -419,6 +445,20 @@ function acceptOffer(g, offer) {
     if (o === offer || o.status !== "open") continue;
     if ([...o.giveLand, ...o.wantLand].some((t) => land.includes(t))) o.status = "superseded";
   }
+  // An outstanding handshake ENCUMBERS the land. Striking a new deal over the
+  // same territory supersedes the old one outright — otherwise the buyer is
+  // charged twice for one asset and then marked for not paying the second bill,
+  // which is a fabricated betrayal.
+  for (const ob of g.obligations) {
+    if (ob.honoured || ob.void || !ob.land.some((t) => land.includes(t))) continue;
+    const between = [offer.from, offer.to];
+    if (!between.includes(ob.debtor) || !between.includes(ob.creditor)) continue;
+    for (const x of g.obligations.filter((y) => y.dealId === ob.dealId && !y.honoured)) {
+      x.void = true;
+      x.voidedTurn = g.turnNo;
+      x.voidedBy = offer.id;
+    }
+  }
 
   if (offer.kind === "CONTRACT") {
     if (from.coins < offer.giveCoins + CONTRACT_FEE || to.coins < offer.wantCoins) {
@@ -481,10 +521,13 @@ async function phaseAct(g) {
       inbound.length ? "PLEDGES MADE TO YOU THIS TURN (private, nobody else knows):\n" + inbound.map((p) => `  ${p.from}: ${p.type === "JOINT_RAID" ? `we both RAID ${p.target}` : p.type === "FORTIFY" ? "I will fortify" : `I will hand you ${p.territory}`}`).join("\n") : "Nobody pledged you anything this turn.",
       mine.length ? "PLEDGES YOU MADE THIS TURN:\n" + mine.map((p) => `  to ${p.to}: ${p.type === "JOINT_RAID" ? `we both RAID ${p.target}` : p.type === "FORTIFY" ? "I fortify" : `I hand over ${p.territory}`}`).join("\n") : "",
       owed.length ? "HANDSHAKES YOU COULD HONOUR NOW (or not):\n" + owed.map((o) => `  ${o.id}: pay ${o.creditor} ${[o.coins ? o.coins + " coins" : null, o.land.length ? o.land.join("+") : null].filter(Boolean).join(" and ")}`).join("\n") : "",
-      `ACT PHASE. Pick ONE action. It is secret until the reveal, when all four are shown together. Also decide which handshakes you honour right now. Keeping a pledge costs you the better action. Breaking it costs you nothing except what they do next.`,
-      `JSON: {"action":"INVEST"|"COLLECT"|"FORTIFY"|"RAID","target":"NAME if RAID","honour":["OBLIGATION_ID"]}`,
+      marksActive(g).length ? "MARKED RIGHT NOW (a lone raid on these lands, for 40):\n" + marksActive(g).map((m) => `  ${m.player} — until turn ${m.until} — ${m.reason}`).join("\n") : "",
+      `ACT PHASE. Pick ONE of three actions. It is secret until the reveal, when all four are shown together. Also decide which handshakes you honour right now.`,
+      `Weigh it honestly: keeping a pledge costs you the better action THIS turn. Breaking one gets you MARKED for two turns, and while marked any single one of them can take 40 off you, all three in the same turn. Sometimes the debt is bigger than the punishment and you should still default — work out which.`,
+      `If you RAID and think all three of you might hit the same person, add "claim" naming the territory you want from them — a unanimous three-way raid takes land instead of coins.`,
+      `JSON: {"action":"INVEST"|"FORTIFY"|"RAID","target":"NAME if RAID","claim":"TERRITORY if RAID","honour":["OBLIGATION_ID"]}`,
     ].filter(Boolean).join("\n\n");
-    const got = await ask(g, me, prompt, (o) => ["INVEST", "COLLECT", "FORTIFY", "RAID"].includes(o.action));
+    const got = await ask(g, me, prompt, (o) => ["INVEST", "FORTIFY", "RAID"].includes(o.action));
     const decision = got ? normaliseAct(g, me, got) : mockAct(g, me);
     return { name: me.name, ...decision };
   }));
@@ -495,8 +538,9 @@ function normaliseAct(g, me, o) {
   let target = o.target;
   if (action === "RAID" && (!byName(g, target) || target === me.name)) action = "INVEST";
   if (action !== "RAID") target = null;
+  const claim = action === "RAID" && byName(g, target)?.land.includes(o.claim) ? o.claim : null;
   const owedIds = myObligations(g, me).map((x) => x.id);
-  return { action, target, honour: (Array.isArray(o.honour) ? o.honour : []).filter((id) => owedIds.includes(id)) };
+  return { action, target, claim, honour: (Array.isArray(o.honour) ? o.honour : []).filter((id) => owedIds.includes(id)) };
 }
 
 // ---------------------------------------------------------------------------
@@ -529,13 +573,36 @@ function resolve(g, actions) {
 
   // 2b · the other half of every handshake. A delivery is only a story if you
   // can see what came back — and here, usually, nothing did.
+  // Discharge before judging. If the creditor already holds the land — because
+  // a contract, a seizure or another deal delivered it — the debt is settled and
+  // calling it a default is a FALSE BETRAYAL. Found the hard way: a player who
+  // paid 267 for E1 under a contract was marked for "took E1 and never paid",
+  // because a stale handshake for the same asset was still open. In a system
+  // whose whole claim is that betrayals are facts, this is the worst class of bug.
+  for (const ob of g.obligations) {
+    if (ob.honoured || ob.void || !ob.land.length) continue;
+    const creditor = byName(g, ob.creditor);
+    if (ob.land.every((t) => creditor.land.includes(t))) {
+      // Void the WHOLE deal, both legs. Marking only the land leg "honoured"
+      // makes the other leg look like an asymmetric rip — which is how the
+      // false betrayal got through the first time.
+      for (const x of g.obligations.filter((y) => y.dealId === ob.dealId && !y.honoured)) {
+        x.void = true;
+        x.voidedTurn = g.turnNo;
+      }
+    }
+  }
+
   const defaults = [];
   for (const ob of g.obligations) {
-    if (ob.honoured) continue;
+    if (ob.honoured || ob.void) continue;
     const paired = g.obligations.find((x) => x.dealId === ob.dealId && x.debtor === ob.creditor);
     if (paired && paired.honoured) {
+      // The turn the rip becomes a fact is the turn it marks them. Recorded
+      // once, or the mark would renew forever and never expire.
+      if (!ob.defaultedTurn) ob.defaultedTurn = g.turnNo;
       defaults.push({
-        id: ob.id, debtor: ob.debtor, creditor: ob.creditor,
+        id: ob.id, debtor: ob.debtor, creditor: ob.creditor, firstSeen: ob.defaultedTurn,
         owes: [ob.coins ? `${ob.coins} coins` : null, ob.land.join("+") || null].filter(Boolean).join(" + "),
         since: ob.turn, theyPaidOn: paired.honouredTurn,
         gotWhat: [paired.coins ? `${paired.coins} coins` : null, paired.land.join("+") || null].filter(Boolean).join(" + "),
@@ -548,7 +615,6 @@ function resolve(g, actions) {
   for (const a of actions) {
     const me = byName(g, a.name);
     if (a.action === "INVEST") { me.coins += 20; events.push(`${me.name} invests, +20.`); }
-    else if (a.action === "COLLECT") { me.coins += 10; events.push(`${me.name} collects, +10.`); }
     else if (a.action === "FORTIFY") { events.push(`${me.name} fortifies.`); }
     else if (a.action === "RAID") { (raidsBy[a.target] ||= []).push(me.name); }
   }
@@ -558,28 +624,74 @@ function resolve(g, actions) {
   for (const [targetName, raiders] of Object.entries(raidsBy)) {
     const target = byName(g, targetName);
     const fortified = actions.find((a) => a.name === targetName)?.action === "FORTIFY";
-    if (fortified || raiders.length < 2) {
+    const marked = isMarked(g, targetName);
+    const lands = raiders.length >= 3;
+    // A lone raider only lands it if the target is MARKED. That is the whole
+    // price of a broken word.
+    const fails = fortified || (raiders.length < 2 && !marked);
+
+    if (fails) {
       for (const r of raiders) {
         const p = byName(g, r);
         p.coins = Math.max(0, p.coins - RAID_PENALTY);
       }
       raids.push({
         target: targetName, raiders, success: false,
-        reason: fortified ? "target fortified" : "lone raider",
+        reason: fortified ? "target fortified" : "lone raider, target not marked",
         each: -RAID_PENALTY,
       });
-    } else {
-      let taken = 0;
-      for (const r of raiders) {
-        const amount = Math.min(RAID_TAKE, target.coins);
-        target.coins -= amount;
-        byName(g, r).coins += amount;
-        taken += amount;
-      }
-      raids.push({ target: targetName, raiders, success: true, total: taken, each: RAID_TAKE });
+      continue;
     }
+
+    if (lands) {
+      // All three others came. They take a territory, not coins.
+      const seized = seizeTerritory(g, target, raiders, actions);
+      raids.push({ target: targetName, raiders, success: true, seizure: seized });
+      continue;
+    }
+
+    let taken = 0;
+    for (const r of raiders) {
+      const amount = Math.min(RAID_TAKE, target.coins);
+      target.coins -= amount;
+      byName(g, r).coins += amount;
+      taken += amount;
+    }
+    raids.push({
+      target: targetName, raiders, success: true, total: taken, each: RAID_TAKE,
+      lone: raiders.length === 1, markedTarget: marked,
+    });
   }
   return { income: inc, honoured, defaults, raids, events, kept: keptPledges(g, actions) };
+}
+
+// The three-way seizure. RULES says the raiders "take a territory of their
+// choosing" but not who ends up holding it, so this is an interpretation, made
+// mechanical so no judge is needed and made to serve the rule's stated purpose
+// (an anti-runaway-leader valve): the territory is the one most raiders named,
+// and it goes to the POOREST raider who named it.
+function seizeTerritory(g, target, raiderNames, actions) {
+  if (!target.land.length) return null;
+  const claims = new Map();
+  for (const name of raiderNames) {
+    const claim = actions.find((a) => a.name === name)?.claim;
+    if (claim && target.land.includes(claim)) claims.set(claim, [...(claims.get(claim) || []), name]);
+  }
+  let terr, contenders;
+  if (claims.size) {
+    [terr, contenders] = [...claims.entries()].sort((a, b) => b[1].length - a[1].length)[0];
+  } else {
+    // Nobody named one: take the piece that hurts most — one that breaks a
+    // complete region if they have one.
+    const done = completeRegions(target).flatMap((r) => REGIONS[r]);
+    terr = done.find((t) => target.land.includes(t)) || target.land[0];
+    contenders = raiderNames;
+  }
+  const winner = contenders
+    .map((n) => byName(g, n))
+    .sort((a, b) => netWorth(a) - netWorth(b))[0];
+  transfer(g, target, winner, 0, [terr], "three-way seizure");
+  return { territory: terr, to: winner.name, claimedBy: contenders, unanimous: claims.size === 0 };
 }
 
 // Kept promises are as much of a beat as broken ones — an alliance that holds
@@ -625,9 +737,22 @@ function writeMemory(g, entry) {
   }
   for (const d of entry.resolution.defaults) {
     push(d.creditor, `${d.debtor} STILL OWES you ${d.owes} (${d.id}) — you already delivered on T${d.theyPaidOn}.`);
+    const cred = byName(g, d.creditor);
+    if (cred && !cred.memory.grievances.some((x) => x.id === d.id)) {
+      cred.memory.grievances.push({ id: d.id, turn: d.theyPaidOn, who: d.debtor, what: `you took ${d.gotWhat} and never paid the ${d.owes}` });
+    }
   }
   for (const k of entry.resolution.kept) {
     push(k.to, `${k.by} ${k.label} — they are good for it.`);
+  }
+  for (const m of entry.newMarks) {
+    for (const p of g.players) {
+      if (p.name === m.player) p.memory.events.push({ turn: g.turnNo, text: `YOU ARE MARKED until T${m.until}. Any one of them can raid you alone for 40. Fortify or pay.` });
+      else p.memory.events.push({ turn: g.turnNo, text: `${m.player} IS MARKED until T${m.until} — raid them ALONE and it lands, 40 coins.` });
+    }
+  }
+  for (const s of entry.resolution.raids.filter((r) => r.seizure)) {
+    push(s.target, `all three raided you together and TOOK ${s.seizure.territory}.`);
   }
   for (const r of entry.resolution.raids) {
     if (r.success) {
@@ -641,6 +766,10 @@ function writeMemory(g, entry) {
   for (const b of entry.breaches) {
     push(b.by, `YOU BROKE a promise to ${b.to}: ${b.label}.`);
     push(b.to, `${b.by} BROKE a promise to you: ${b.label}.`);
+    for (const n of String(b.to).split(/\s*&\s*/)) {
+      const v = byName(g, n);
+      if (v && MARKING_CODES.has(b.code)) v.memory.grievances.push({ id: `${b.turn}${b.code}${b.by}`, turn: b.turn, who: b.by, what: b.label });
+    }
   }
 }
 
@@ -700,6 +829,26 @@ function myTurnPledges(g) {
   return g.pledges.filter((p) => p.turn === g.turnNo);
 }
 
+// Apply the public mark. Called once a turn, after the breaches for that turn
+// are known, so the punishment window opens on the NEXT turn.
+export function applyMarks(g, breaches, defaults) {
+  const fresh = [];
+  const add = (player, reason, code) => {
+    const existing = g.marks.find((m) => m.player === player && m.turn === g.turnNo);
+    if (existing) return;
+    const m = { player, turn: g.turnNo, until: g.turnNo + MARK_TURNS, reason, code };
+    g.marks.push(m);
+    fresh.push(m);
+  };
+  for (const b of breaches) {
+    if (MARKING_CODES.has(b.code)) add(b.by, b.label, b.code);
+  }
+  for (const d of defaults) {
+    if (d.firstSeen === g.turnNo) add(d.debtor, `took ${d.gotWhat} from ${d.creditor} on T${d.theyPaidOn} and never paid the ${d.owes}`, "HANDSHAKE_DEFAULT");
+  }
+  return fresh;
+}
+
 function dedupe(list) {
   const seen = new Set();
   return list.filter((b) => {
@@ -718,14 +867,21 @@ export function detectEndBreaches(g) {
     g.deliveries.some((d) => d.from === name && d.to === toName && d.land.includes(terr));
 
   for (const p of g.pledges.filter((x) => x.type === "LAND")) {
+    // Not a default if the promisee ended up with it anyway, or if the promiser
+    // no longer has it to give (they were raided out of it, not lying about it).
+    if (byName(g, p.to).land.includes(p.territory)) continue;
+    if (!byName(g, p.from).land.includes(p.territory)) continue;
     if (!delivered(p.from, p.territory, p.to)) {
       out.push({ turn: p.turn, code: "LAND_DEFAULT", by: p.from, to: p.to, label: `promised ${p.territory} to ${p.to} on a handshake and never transferred it` });
     }
   }
-  for (const ob of g.obligations.filter((o) => !o.honoured && o.land.length)) {
+  for (const ob of g.obligations.filter((o) => !o.honoured && !o.void && o.land.length)) {
+    // Only a default if they still hold it. If it moved on by any route, the
+    // creditor was not robbed of it by this person.
+    if (!byName(g, ob.debtor).land.some((t) => ob.land.includes(t))) continue;
     out.push({ turn: ob.turn, code: "LAND_DEFAULT", by: ob.debtor, to: ob.creditor, label: `accepted handshake ${ob.dealId} owing ${ob.land.join("+")} to ${ob.creditor} and never delivered` });
   }
-  for (const ob of g.obligations.filter((o) => !o.honoured && o.coins && !o.land.length)) {
+  for (const ob of g.obligations.filter((o) => !o.honoured && !o.void && o.coins && !o.land.length)) {
     out.push({ turn: ob.turn, code: "DEBT_DEFAULT", by: ob.debtor, to: ob.creditor, label: `accepted handshake ${ob.dealId} owing ${ob.coins} coins to ${ob.creditor} and never paid` });
   }
 
@@ -790,8 +946,30 @@ function keyCost(g, terr) {
 function priceFor(g, me, terr) {
   return Math.round(keyValue(g, terr) * 0.5); // meet the seller well above their floor
 }
-// Who do I already have a live claim on? Stops the mock re-offering for the
-// same territory every turn and paying for it twice.
+// How much a player believes being marked will cost them. The honest model of
+// a competent seat: marked for two turns, and the cheapest safe answer is to
+// FORTIFY both of them, which costs the two forgone INVESTs. Add a premium for
+// a hostile table (people who have already come for you will come again).
+// Archetype only scales the FEAR, it does not change the arithmetic — otherwise
+// the answer to "is MARKED strong enough" would just be my thumb.
+const MARK_FEAR = { saint: 3.0, diplomat: 2.0, wildcard: 1.2, shark: 0.6 };
+
+function markCost(g, me) {
+  const attackers = new Set(me.memory.events.filter((e) => e.text.startsWith("RAIDED by")).flatMap((e) => g.players.map((p) => p.name).filter((n) => e.text.includes(n)))).size;
+  const base = MARK_TURNS * 20 + attackers * 40; // fortify twice, plus what leaks
+  return Math.round(base * (MARK_FEAR[me.archetype] ?? 1));
+}
+
+// What honouring this obligation actually costs me, in end-of-game points.
+function honourCost(g, me, ob) {
+  const left = g.turns - g.turnNo + 1;
+  const creditor = byName(g, ob.creditor);
+  return ob.coins + ob.land.reduce((sum, terr) => {
+    const theirKey = creditor && craving(g, creditor) && craving(g, creditor).territory === terr;
+    return sum + keyCost(g, terr) + (theirKey ? 60 * left * 0.3 : 0);
+  }, 0);
+}
+
 function liveClaim(g, me, terr) {
   return (
     g.offers.some((o) => o.from === me.name && o.status === "open" && o.wantLand.includes(terr)) ||
@@ -800,8 +978,6 @@ function liveClaim(g, me, terr) {
   );
 }
 
-// The partner I have actually landed a raid with. Alliances that persist are
-// what make a betrayal land; a new partner every turn is just noise.
 function provenPartner(g, me) {
   const hits = me.memory.events.filter((e) => e.text.startsWith("you raided "));
   const last = hits[hits.length - 1];
@@ -811,7 +987,13 @@ function provenPartner(g, me) {
 }
 
 function burnedMe(g, me) {
-  return new Set(me.memory.events.filter((e) => e.text.includes("BROKE a promise to you")).map((e) => e.text.split(" ")[0]));
+  return new Set(me.memory.grievances.map((x) => x.who));
+}
+
+// The best thing I could take off them if the whole table piles on.
+function bestClaim(g, target) {
+  const done = completeRegions(target).flatMap((r) => REGIONS[r]);
+  return done.find((t) => target.land.includes(t)) || target.land[0] || null;
 }
 
 function mockTalk(g, me) {
@@ -820,54 +1002,57 @@ function mockTalk(g, me) {
   const want = craving(g, me);
   const rank = rankedOthers(g, me);
   const leader = rank[0];
-  const weakest = rank[rank.length - 1];
-  const recent = me.memory.events.filter((e) => e.turn === g.turnNo - 1);
-  const hitMe = recent.find((e) => e.text.startsWith("RAIDED by"));
-  const brokeMe = recent.find((e) => e.text.includes("BROKE a promise to you"));
+  const marked = rank.filter((p) => isMarked(g, p.name));
+  const grievance = me.memory.grievances[me.memory.grievances.length - 1];
+  const iAmMarked = isMarked(g, me.name);
   const leaderDone = completeRegions(leader);
-  const partner = provenPartner(g, me);
-
-  const owedMe = me.memory.events.filter((e) => e.text.includes("STILL OWES you")).slice(-1)[0];
 
   let pub;
-  if (owedMe && rng() < 0.7) {
-    pub = `${owedMe.text.split(" ")[0]} has my land and owes me the money. Ask them about it. I will wait.`;
+  if (marked.length && rng() < 0.85) {
+    // Naming a marked player is aiming, not commentary. This is the line the
+    // MARKED rule exists to produce.
+    const m = marksActive(g).find((x) => x.player === marked[0].name);
+    pub = `${marked[0].name} is marked until T${m.until}. Any of us can take forty off them alone. I am going. Come or don't.`;
+  } else if (grievance && rng() < 0.75) {
+    pub = `T${grievance.turn}, ${grievance.who}: ${grievance.what}. That is on the record. Everyone price it in.`;
+  } else if (iAmMarked) {
+    pub = `Yes, I am marked. Come at me and find out whether I fortified. Or talk to me like an adult.`;
   } else if (leaderDone.length && netWorth(leader) > netWorth(me)) {
     pub = pick(rng, [
-      `${leader.name} owns ${leaderDone[0]}. That is ninety a turn while we argue. Two of us can end it.`,
-      `Count it: ${leader.name} makes ninety a turn from ${leaderDone[0]}. Nobody catches that alone, so pick a side.`,
-      `I am not the problem here. ${leader.name} is, and they are getting further away every turn we sit still.`,
+      `${leader.name} makes ninety a turn from ${leaderDone[0]}. Three of us together take land off them. Two of us take nothing.`,
+      `I am not the problem. ${leader.name} is, and they get further away every turn we sit still.`,
     ]);
-  } else if (hitMe) {
-    pub = `${hitMe.text.replace("RAIDED by ", "").split(" —")[0]} hit me together. One of them will sell the other. I am buying.`;
-  } else if (brokeMe) {
-    pub = `${brokeMe.text.split(" ")[0]} gave me their word and did not keep it. Price that in before you deal with them.`;
   } else if (want && want.holder) {
     pub = pick(rng, [
-      `${want.holder}: name your number for ${want.territory}. I am buying, not raiding. Everyone else, watch who refuses.`,
-      `I need ${want.territory} and only ${want.holder} has it. Whatever they want, I will beat it.`,
-      `Open, so nobody is surprised: I am paying for ${want.territory}. I have no reason to hit anyone this turn.`,
+      `${want.holder}: name your number for ${want.territory}. I will make it a contract so neither of us has to trust anyone.`,
+      `I am buying ${want.territory}, not taking it. Watch who refuses and ask yourself why.`,
     ]);
   } else {
-    pub = pick(rng, [
-      `I hold what two of you need. I am not giving it away, but I will sell it. Bid.`,
-      `${leader.name} is ahead and ${weakest.name} is finished. Everyone else should be talking to me.`,
-    ]);
+    pub = `I hold what two of you need and I need nothing. That is the whole conversation. Bid.`;
   }
 
   const priv = [];
   if (want && want.holder && !liveClaim(g, me, want.territory)) {
-    priv.push({ from: me.name, to: want.holder, text: `${want.territory} finishes ${want.region} for me. ${priceFor(g, me, want.territory)} coins, and I will make it binding. Say yes.` });
+    priv.push({ from: me.name, to: want.holder, text: `${want.territory} finishes ${want.region}. ${priceFor(g, me, want.territory)} coins, contract, no trust required. Say yes.` });
   }
-  const suitors = rank.filter((p) => craving(g, p) && craving(g, p).holder === me.name);
-  if (suitors.length && rng() < 0.6) {
-    const s = suitors[0];
-    priv.push({ from: me.name, to: s.name, text: `I know what ${craving(g, s).territory} is worth to you. It is not for sale cheap. Beat ${priceFor(g, me, craving(g, s).territory)} and stay useful to me.` });
-  }
-  const mark = rank.find((p) => netWorth(p) >= netWorth(me)) || leader;
-  const ally = partner || rank.find((p) => p.name !== mark.name && !burnedMe(g, me).has(p.name)) || rank[1];
-  if (g.turnNo >= 2 && ally && mark && ally.name !== mark.name && rng() < t.aggression + 0.3 && priv.length < 2) {
-    priv.push({ from: me.name, to: ally.name, text: partner && partner.name === ally.name ? `Same as last time. ${mark.name}, this turn. You showed up before, so I am not asking twice.` : `${mark.name} this turn, you and me. Thirty each if we both turn up, minus fifteen if one of us blinks.` });
+  if (marked.length && priv.length < 2) {
+    const ally = rank.find((p) => p.name !== marked[0].name);
+    if (ally) priv.push({ from: me.name, to: ally.name, text: `${marked[0].name} is marked. If all three of us go this turn we take a territory, not coins. Bring the third.` });
+  } else {
+    const suitors = rank.filter((p) => craving(g, p) && craving(g, p).holder === me.name);
+    if (suitors.length && rng() < 0.55 && priv.length < 2) {
+      priv.push({ from: me.name, to: suitors[0].name, text: `I know what ${craving(g, suitors[0]).territory} is worth to you. Beat ${priceFor(g, me, craving(g, suitors[0]).territory)} and it is yours, binding.` });
+    }
+    const mark = rank.find((p) => netWorth(p) >= netWorth(me)) || leader;
+    const ally = provenPartner(g, me) || rank.find((p) => p.name !== mark.name && !burnedMe(g, me).has(p.name));
+    if (g.turnNo >= 2 && ally && mark && ally.name !== mark.name && rng() < t.aggression + 0.3 && priv.length < 2) {
+      priv.push({ from: me.name, to: ally.name, text: `${mark.name}, this turn, you and me. Forty each. I am not skipping it — being marked costs me more than the raid is worth.` });
+      // TALK and DEAL are two calls in the same turn. Without carrying the
+      // intention across, an agent proposes a raid in private and then does not
+      // pledge it — which reads as incoherent and inflates the failed-raid
+      // count with raids nobody ever actually agreed to.
+      me._intent = { ally: ally.name, target: mark.name, turn: g.turnNo };
+    }
   }
   return { public: [{ from: me.name, text: capWords(pub, PUBLIC_CAP) }], private: priv.slice(0, 2).map((p) => ({ ...p, text: capWords(p.text, PRIVATE_CAP) })) };
 }
@@ -882,8 +1067,6 @@ function mockDeal(g, me) {
   const accept = [];
   const left = g.turns - g.turnNo + 1;
 
-  // Buy the one territory that completes my region — unless I already have a
-  // live claim on it.
   if (want && want.holder && !liveClaim(g, me, want.territory)) {
     const price = priceFor(g, me, want.territory);
     const binding = me.coins >= price + CONTRACT_FEE;
@@ -891,12 +1074,10 @@ function mockDeal(g, me) {
       from: me.name, to: want.holder,
       kind: binding ? "CONTRACT" : "HANDSHAKE",
       giveCoins: price, giveLand: [], wantCoins: 0, wantLand: [want.territory],
-      note: binding ? `binding, now: ${price} for ${want.territory}.` : `I do not have ${price} yet. You will get it. My word.`,
+      note: binding ? `binding, now: ${price} for ${want.territory}.` : `I cannot cover ${price} yet. You will get it.`,
     });
   }
 
-  // Sell what other people are desperate for. Everyone does this; a shark also
-  // promises it to a second buyer.
   const suitors = rank.filter((p) => craving(g, p) && craving(g, p).holder === me.name);
   for (const s of suitors.slice(0, 1)) {
     const asset = craving(g, s).territory;
@@ -905,53 +1086,59 @@ function mockDeal(g, me) {
       offers.push({
         from: me.name, to: s.name,
         kind: t.duplicity > 0.4 ? "HANDSHAKE" : "CONTRACT",
-        giveCoins: 0, giveLand: [asset], wantCoins: Math.round(priceFor(g, me, asset) * 1.4), wantLand: [],
-        note: t.duplicity > 0.4 ? `pay me first and it is yours. I am good for it.` : `${asset} for coins, binding, done.`,
+        giveCoins: 0, giveLand: [asset], wantCoins: Math.round(priceFor(g, me, asset) * 1.3), wantLand: [],
+        note: t.duplicity > 0.4 ? `pay me first and it is yours.` : `${asset} for coins, binding, done.`,
       });
     }
-    if (rng() < t.duplicity && g.turnNo >= 3) {
+    // Selling the same asset twice no longer only costs reputation — the
+    // default marks you — so only the boldest still try it.
+    if (rng() < t.duplicity * 0.6 && g.turnNo >= 3) {
       pledges.push({ from: me.name, to: s.name, type: "LAND", territory: asset });
-      const second = rank.find((p) => p.name !== s.name);
-      if (second && rng() < t.duplicity) pledges.push({ from: me.name, to: second.name, type: "LAND", territory: asset });
     }
   }
 
-  // Accept what is plainly good for me.
   for (const o of liveOffersFor(g, me)) {
     const seller = byName(g, o.from);
     const gain = o.giveCoins + o.giveLand.length * (TERRITORY_SCORE + 10 * left);
     const iAmOneAway = want && o.giveLand.includes(want.territory);
     const cost = o.wantCoins + o.wantLand.reduce((sum, terr) => {
       const keyToThem = craving(g, seller) && craving(g, seller).territory === terr;
-      // Selling the key hands them 60 a turn. Charge for that, but not so much
-      // that no price on earth clears.
       return sum + keyCost(g, terr) + (keyToThem ? 60 * left * 0.2 : 0);
     }, 0);
     const value = gain + (iAmOneAway ? keyValue(g, o.giveLand[0]) - TERRITORY_SCORE : 0) - cost;
     const canPay = me.coins >= o.wantCoins;
-    const freeRide = o.kind === "HANDSHAKE" && t.loyalty < 0.45; // take now, decide later
-    if ((value > 0 && canPay) || (freeRide && gain > 0)) accept.push(o.id);
+    // "Accept and default" now carries a mark, so only accept a handshake you
+    // might actually want to walk away from if the debt beats the punishment.
+    const freeRide = o.kind === "HANDSHAKE" && t.loyalty < 0.45 && gain > markCost(g, me);
+    if ((value > 0 && canPay) || freeRide) accept.push(o.id);
   }
 
-  // The turn's conspiracy. Stick with a partner who has shown up before, and
-  // do NOT keep proposing to someone who has already left you standing there —
-  // without a grudge the log fills with promises nobody ever meant.
+  // Piling onto a marked player needs no pledge at all — a lone raid lands. So
+  // the conspiracy is now for UNMARKED targets only.
+  const markedTargets = rank.filter((p) => isMarked(g, p.name));
+  if (markedTargets.length) return { from: me.name, offers, accept, pledges };
+
   const burned = burnedMe(g, me);
   const partner = provenPartner(g, me);
-  const mark = rank.find((p) => p.name !== (partner && partner.name) && netWorth(p) >= netWorth(me)) || rank[0];
-  const trustworthy = rank.filter((p) => p.name !== mark.name && !burned.has(p.name));
-  const ally = (partner && partner.name !== mark.name && !burned.has(partner.name) ? partner : null) || trustworthy[0];
-  if (!ally) return { from: me.name, offers, accept, pledges }; // nobody left worth asking
-  const inbound = g.pledges.some((p) => p.to === me.name && p.turn === g.turnNo - 1 && p.type === "JOINT_RAID");
-  const aggro = t.aggression + (g.turnNo > 8 ? 0.25 : 0) + (inbound ? 0.2 : 0) + (partner ? 0.2 : 0);
+  // Carry this turn's TALK proposal through, so what was said in private is
+  // what gets pledged.
+  const said = me._intent && me._intent.turn === g.turnNo ? me._intent : null;
+  const target = said ? byName(g, said.target)
+    : rank.find((p) => p.name !== (partner && partner.name) && netWorth(p) >= netWorth(me)) || rank[0];
+  const trustworthy = rank.filter((p) => p.name !== target.name && !burned.has(p.name));
+  const ally = said ? byName(g, said.ally)
+    : (partner && partner.name !== target.name && !burned.has(partner.name) ? partner : null) || trustworthy[0];
+  if (!ally || !target || ally.name === target.name) return { from: me.name, offers, accept, pledges };
 
-  if (g.turnNo >= 2 && ally && mark && rng() < aggro) {
-    pledges.push({ from: me.name, to: ally.name, type: "JOINT_RAID", target: mark.name });
-    if (rng() < t.duplicity * 0.8) {
-      const third = rank.find((p) => p.name !== ally.name && p.name !== mark.name);
+  const aggro = said ? 1 : t.aggression + (g.turnNo > 8 ? 0.25 : 0) + (partner ? 0.2 : 0);
+  if (g.turnNo >= 2 && rng() < aggro) {
+    pledges.push({ from: me.name, to: ally.name, type: "JOINT_RAID", target: target.name });
+    // Pledging two incompatible raids now marks you for both. Rare, not routine.
+    if (rng() < t.duplicity * 0.4) {
+      const third = rank.find((p) => p.name !== ally.name && p.name !== target.name);
       if (third) pledges.push({ from: me.name, to: third.name, type: "JOINT_RAID", target: ally.name });
     }
-  } else if (g.turnNo >= 3 && rng() < 0.25) {
+  } else if (g.turnNo >= 3 && rng() < 0.2) {
     pledges.push({ from: me.name, to: rank[rank.length - 1].name, type: "FORTIFY" });
   }
   return { from: me.name, offers, accept, pledges };
@@ -963,49 +1150,71 @@ function mockAct(g, me) {
   const mine = myPledges(g, me);
   const inbound = pledgesToMe(g, me).filter((p) => p.type === "JOINT_RAID");
   const rank = rankedOthers(g, me);
+  const iAmMarked = isMarked(g, me.name);
+  const cap = markCost(g, me);
 
-  // Handshakes I honour. Late on, a low-loyalty player simply stops paying.
-  const lateDiscount = g.turnNo >= g.turns - 2 ? 0.4 : 1;
+  // Honour or default by arithmetic, not by a fixed loyalty roll: pay if the
+  // debt is cheaper than the punishment, default if it is not.
   const honour = myObligations(g, me)
     .filter((o) => {
+      if (o.coins > me.coins) return false;
       const theyPaid = g.obligations.some((x) => x.dealId === o.dealId && x.debtor === o.creditor && x.honoured);
-      const affordable = o.coins <= me.coins;
-      const p = 0.25 + t.loyalty * 0.7 * lateDiscount + (theyPaid ? 0.4 : 0) - (o.land.length ? 0.3 : 0);
-      return affordable && rng() < p;
+      const budget = cap * (theyPaid ? 1.6 : 1) * (g.turnNo >= g.turns - 1 ? 0.3 : 1);
+      return honourCost(g, me, o) <= budget;
     })
     .map((o) => o.id);
+
+  // If I am marked, all three can come for me alone. Fortifying costs 20 and
+  // stops all of it.
+  if (iAmMarked && rng() < 0.75) return { action: "FORTIFY", target: null, claim: null, honour };
+
+  // A marked player is free money: a lone raid lands for 40 against INVEST's
+  // 20 — unless they fortify, which costs me 15. Back off if they just did.
+  const markedTargets = rank.filter((p) => isMarked(g, p.name));
+  if (markedTargets.length) {
+    const victim = markedTargets.sort((a, b) => b.coins - a.coins)[0];
+    const turtledLast = g.log.slice(-1)[0]?.actions.find((a) => a.name === victim.name)?.action === "FORTIFY";
+    if (rng() < (turtledLast ? 0.3 : 0.8)) {
+      return { action: "RAID", target: victim.name, claim: bestClaim(g, victim), honour };
+    }
+  }
 
   const raidPledge = mine.find((p) => p.type === "JOINT_RAID");
   const fortPledge = mine.find((p) => p.type === "FORTIFY");
 
   if (raidPledge) {
-    if (rng() < 0.35 + t.loyalty * 0.6) return { action: "RAID", target: raidPledge.target, honour };
-    const partner = byName(g, raidPledge.to);
-    // The knife: agree the target, then take the partner instead.
-    if (rng() < t.duplicity && inbound.length && netWorth(partner) >= netWorth(me)) {
-      return { action: "RAID", target: partner.name, honour };
+    // Skipping now marks me. Showing up costs the difference between a landed
+    // raid (40) and INVEST (20) — which is negative. Showing up is usually right.
+    const skipValue = 20 - cap * 0.5;
+    if (skipValue < 0 || rng() < 0.3 + t.loyalty * 0.6) {
+      return { action: "RAID", target: raidPledge.target, claim: bestClaim(g, byName(g, raidPledge.target)), honour };
     }
-    return { action: rng() < 0.35 ? "FORTIFY" : "INVEST", target: null, honour };
+    const partner = byName(g, raidPledge.to);
+    if (rng() < t.duplicity && inbound.length && netWorth(partner) >= netWorth(me)) {
+      return { action: "RAID", target: partner.name, claim: bestClaim(g, partner), honour };
+    }
+    return { action: rng() < 0.35 ? "FORTIFY" : "INVEST", target: null, claim: null, honour };
   }
 
   if (inbound.length) {
     const call = inbound[0];
-    if (call.target !== me.name && rng() < 0.5 + t.loyalty * 0.45) return { action: "RAID", target: call.target, honour };
+    if (call.target !== me.name && rng() < 0.55 + t.loyalty * 0.4) {
+      return { action: "RAID", target: call.target, claim: bestClaim(g, byName(g, call.target)), honour };
+    }
   }
 
-  if (fortPledge) return { action: rng() < 0.3 + t.loyalty * 0.6 ? "FORTIFY" : "INVEST", target: null, honour };
+  if (fortPledge) return { action: rng() < 0.35 + t.loyalty * 0.6 ? "FORTIFY" : "INVEST", target: null, claim: null, honour };
 
   const hitLast = me.memory.events.some((e) => e.turn === g.turnNo - 1 && e.text.startsWith("RAIDED by"));
-  const leading = rank.every((p) => netWorth(me) >= netWorth(p));
-  if ((hitLast || (leading && g.turnNo > 5)) && rng() < 0.3) return { action: "FORTIFY", target: null, honour };
+  if (hitLast && rng() < 0.35) return { action: "FORTIFY", target: null, claim: null, honour };
 
-  return { action: "INVEST", target: null, honour };
+  return { action: "INVEST", target: null, claim: null, honour };
 }
 
 // ---------------------------------------------------------------------------
 // the loop
 // ---------------------------------------------------------------------------
-export async function runGame({ players, turns = 12, seed = 1, deal = "ring" }) {
+export async function runGame({ players, turns = 12, seed = 1, deal = "contested" }) {
   const g = createGame({ players, turns, seed, deal });
   const opening = g.players.map((p) => {
     const c = craving(g, p);
@@ -1018,8 +1227,10 @@ export async function runGame({ players, turns = 12, seed = 1, deal = "ring" }) 
     const deals = await phaseDeal(g);
     const actions = await phaseAct(g);
     const breaches = detectTurnBreaches(g, actions);
+    const markedGoingIn = marksActive(g).map((m) => ({ ...m }));
     const resolution = resolve(g, actions);
-    const entry = { n, talk, deals, actions, resolution, breaches, standings: standings(g) };
+    const newMarks = applyMarks(g, breaches, resolution.defaults);
+    const entry = { n, talk, deals, actions, resolution, breaches, markedGoingIn, newMarks, standings: standings(g) };
     g.log.push(entry);
     writeMemory(g, entry);
   }
@@ -1037,6 +1248,7 @@ export async function runGame({ players, turns = 12, seed = 1, deal = "ring" }) 
     offers: g.offers,
     pledges: g.pledges,
     deliveries: g.deliveries,
+    marks: g.marks,
     breaches: [...g.log.flatMap((e) => e.breaches), ...endBreaches].sort((a, b) => a.turn - b.turn),
     final,
     winner: final[0],
