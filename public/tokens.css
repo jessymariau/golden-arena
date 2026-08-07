@@ -1,0 +1,159 @@
+/* ═════════════════════════════════════════════════════════════════════════
+   GOLDEN ARENA · DESIGN TOKENS · v1
+   ─────────────────────────────────────────────────────────────────────────
+   The aesthetic: "game-show noir". The vault at midnight — one warm light
+   over a card table. Near-black warm elevations, gold-foil display type,
+   cream ink, and exactly two accent hues: SPLIT green and STEAL red
+   (handicaps use the tarnished end of the red family: rust).
+
+   THE SYSTEM
+   · Color        --bg-0/-1/-2 elevations · --ink/-muted/-faint · gold
+                  family (+foil gradient pair) · --green · --red · --rust ·
+                  --line hairlines · translucent overlays (--*-glass, --ink-*)
+   · Type         --font-display (engraved serif) · --font-body ·
+                  --font-mono (money) · --font-stamp (rubber stamp) ·
+                  scale --fs-xs → --fs-hero, responsive via clamp()
+   · Space        --sp-1 → --sp-8 on a 4px base (4·8·12·16·24·32·48·64)
+   · Radii        --r-sm/-md/-lg/-xl/-pill
+   · Shadow       --shadow-1/-2 depth · --glow-gold/-green/-red (+soft)
+   · Motion       --t-fast/-med/-slow · --ease-out · --ease-snap (stamps)
+   · Z            --z-nav · --z-toast
+   Every component in style.css consumes ONLY these tokens — restyle the
+   whole arena by editing this one file.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/* ── self-hosted faces (public/fonts — zero runtime external requests) ──── */
+@font-face {
+  font-family: "Playfair Display";
+  font-style: normal;
+  font-weight: 600 700;
+  font-display: swap;
+  src: url("fonts/playfair-display-latin-600-700.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Playfair Display";
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: url("fonts/playfair-display-latin-700italic.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Archivo Black";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/archivo-black-latin-400.woff2") format("woff2");
+}
+
+:root {
+  /* ── color · elevations (warm near-blacks, felt to brass) ─────────────── */
+  --bg-0: #0d0a07;                 /* the room */
+  --bg-1: #16110b;                 /* the table */
+  --bg-2: #201911;                 /* raised cards, docks */
+  --bg-3: #2a2117;                 /* hover / pressed surfaces */
+
+  /* ── color · ink (cream on felt) ──────────────────────────────────────── */
+  --ink:        #f0e7d3;
+  --ink-muted:  #a89a80;
+  --ink-faint:  #7d715c;
+  --ink-04: rgba(240, 231, 211, .04);
+  --ink-08: rgba(240, 231, 211, .08);
+  --ink-15: rgba(240, 231, 211, .15);
+
+  /* ── color · gold (the house's metal) ─────────────────────────────────── */
+  --gold:        #d2ab5a;
+  --gold-bright: #f2d98c;
+  --gold-deep:   #8a6a25;
+  --gold-08: rgba(210, 171, 90, .08);
+  --gold-14: rgba(210, 171, 90, .14);
+  --gold-25: rgba(210, 171, 90, .25);
+  /* gradient pair + the full foil ramp for clipped headline text */
+  --gold-grad-a: #f7e7b2;
+  --gold-grad-b: #a97e28;
+  --gold-foil: linear-gradient(168deg,
+      var(--gold-grad-a) 0%, #e9c56d 26%, #b58b2e 50%,
+      #f3dc96 72%, var(--gold-grad-b) 100%);
+  --btn-gold-grad: linear-gradient(180deg, #ecd08a 0%, var(--gold) 42%, #b3873a 100%);
+
+  /* ── color · the two accents ──────────────────────────────────────────── */
+  --green:        #3cb371;         /* SPLIT · cooperate */
+  --green-bright: #6fe0a1;
+  --green-10: rgba(60, 179, 113, .12);
+  --green-30: rgba(60, 179, 113, .34);
+  --red:          #d84a35;         /* STEAL · betray */
+  --red-bright:   #ff7a5c;
+  --red-10: rgba(216, 74, 53, .12);
+  --red-30: rgba(216, 74, 53, .38);
+  --rust:         #b26744;         /* tarnished red — handicaps */
+  --rust-12: rgba(178, 103, 68, .14);
+  --rust-45: rgba(178, 103, 68, .5);
+
+  /* ── color · hairlines, overlays ──────────────────────────────────────── */
+  --line:        rgba(210, 171, 90, .16);
+  --line-strong: rgba(210, 171, 90, .38);
+  --scrim: rgba(13, 10, 7, .88);
+  --page-glow:
+      radial-gradient(58% 34% at 50% -4%, rgba(210, 171, 90, .14), transparent 70%),
+      radial-gradient(120% 90% at 50% 118%, rgba(0, 0, 0, .55), transparent 60%);
+
+  /* ── type · families ──────────────────────────────────────────────────── */
+  --font-display: "Playfair Display", Didot, "Bodoni MT", Palatino,
+                  "Palatino Linotype", Georgia, "Times New Roman", serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+               Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, Menlo,
+               monospace;
+  --font-stamp: "Archivo Black", Impact, Haettenschweiler,
+                "Franklin Gothic Bold", "Arial Black", sans-serif;
+
+  /* ── type · scale (clamped, 380px → 1200px) ───────────────────────────── */
+  --fs-xs:   0.72rem;
+  --fs-sm:   0.86rem;
+  --fs-md:   1rem;
+  --fs-lg:   clamp(1.08rem, 1rem + 0.4vw, 1.3rem);
+  --fs-xl:   clamp(1.35rem, 1.15rem + 1vw, 1.9rem);
+  --fs-2xl:  clamp(1.75rem, 1.35rem + 2vw, 2.7rem);
+  --fs-hero: clamp(2.5rem, 1.7rem + 4.2vw, 4.6rem);
+  --track-label: 0.18em;           /* small-caps label tracking */
+  --track-wide:  0.3em;            /* kicker tracking */
+
+  /* ── space · 4px base ─────────────────────────────────────────────────── */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+  --sp-8: 64px;
+  --container: 1080px;
+
+  /* ── radii ────────────────────────────────────────────────────────────── */
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 14px;
+  --r-xl: 20px;
+  --r-pill: 999px;
+
+  /* ── shadow & glow ────────────────────────────────────────────────────── */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, .5), 0 5px 16px rgba(0, 0, 0, .35);
+  --shadow-2: 0 2px 6px rgba(0, 0, 0, .5), 0 16px 44px rgba(0, 0, 0, .5);
+  --glow-gold:      0 0 0 1px var(--gold-25), 0 0 26px rgba(210, 171, 90, .22);
+  --glow-gold-soft: 0 0 18px rgba(210, 171, 90, .16);
+  --glow-green:     0 0 0 1px var(--green-30), 0 0 26px rgba(60, 179, 113, .25);
+  --glow-green-soft: 0 0 16px rgba(60, 179, 113, .18);
+  --glow-red:       0 0 0 1px var(--red-30), 0 0 26px rgba(216, 74, 53, .25);
+  --glow-red-soft:  0 0 16px rgba(216, 74, 53, .18);
+  --ring: 0 0 0 2px var(--bg-0), 0 0 0 4px var(--gold);
+
+  /* ── motion ───────────────────────────────────────────────────────────── */
+  --t-fast: 140ms;
+  --t-med:  240ms;
+  --t-slow: 360ms;
+  --ease-out:  cubic-bezier(.22, .9, .28, 1);
+  --ease-snap: cubic-bezier(.3, 1.5, .45, 1);   /* stamp slam, chip pops */
+
+  /* ── z-index ──────────────────────────────────────────────────────────── */
+  --z-nav:   100;
+  --z-toast: 200;
+}

@@ -1,7 +1,8 @@
 {
   "name": "golden-arena",
-  "version": "1.0.0",
-  "description": "AI models play Split or Steal against each other. Watch who cooperates, who lies, who wins.",
+  "version": "2.0.0",
+  "description": "The behavioral arena for AI models: sit down opposite a frontier model in Split or Steal, Prisoner's Dilemma, Ultimatum and the Trust Game — rig the odds with superpowers and handicaps — and feed the Behavioral Index, the psychology leaderboard of the machines.",
+  "license": "MIT",
   "type": "module",
   "main": "server.js",
   "scripts": {
