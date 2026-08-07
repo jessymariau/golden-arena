@@ -4,6 +4,7 @@
 
 import express from "express";
 import path from "node:path";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 import { liveMode, budgetState, DEFAULT_MODELS } from "./lib/llm.js";
@@ -299,12 +300,35 @@ function seedPlan() {
   return plan;
 }
 
+// Pre-baked board (seed/records.json, generated from the same plan below).
+// Autoscale containers are ephemeral and scale to zero, so without this every
+// cold start would re-simulate 18 matches and a visitor arriving mid-seed
+// would meet a half-empty Index. Loading the file makes the board instant.
+async function loadBakedSeeds() {
+  try {
+    const raw = await readFile(path.join(__dirname, "seed", "records.json"), "utf8");
+    const baked = JSON.parse(raw);
+    if (!Array.isArray(baked) || !baked.length) return 0;
+    for (const rec of baked) await addRecord(rec);
+    return baked.length;
+  } catch {
+    return 0; // no bundled seeds — fall through to simulating them
+  }
+}
+
 // Top-up rather than all-or-nothing: an interrupted boot (killed process,
 // redeploy mid-seed) resumes where it left off instead of never finishing.
 async function seedIfEmpty() {
   if (liveMode()) {
     console.log("Live mode: skipping demo seeding; the board fills with real matches.");
     return;
+  }
+  if (!records().some((r) => String(r.id).startsWith("seed"))) {
+    const n = await loadBakedSeeds();
+    if (n) {
+      console.log(`Board pre-loaded with ${n} baked demo matches (storage=${storageMode()}).`);
+      return;
+    }
   }
   const plan = seedPlan();
   const have = records().filter((r) => String(r.id).startsWith("seed")).length;
