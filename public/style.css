@@ -211,6 +211,15 @@ img { max-width: 100%; }
 }
 .nav-link:hover { color: var(--text-primary); }
 .nav-link.active { color: var(--text-primary); border-bottom-color: var(--foil); }
+/* At 375 the five items need 404px of a 343px strip, so THE INDEX hung 61px
+   off the right edge with nothing to say it was there. Tighter gap and tracking
+   fit them, and the links become a real 44px target on the way. */
+@media (max-width: 480px) {
+  .nav-links { gap: 10px; }
+  .nav-link { letter-spacing: .02em; padding: var(--sp-3) 0; }
+  /* the checkboxes are a primary control in the gallery, not a decoration */
+  .check { min-height: 44px; }
+}
 
 /* status chips — the one place a pill survives.
    The mode pill is also the door to the key panel, so it is a real button:
@@ -292,10 +301,19 @@ button.pill:hover { border-color: currentColor; }
   line-height: 1;
 }
 .choice-sub { font-size: var(--fs-xs); letter-spacing: var(--track-label); text-transform: uppercase; color: var(--text-secondary); }
-.btn-choice-good { background: var(--sig-good-wash); border-color: var(--sig-good-rule); color: var(--sig-good); }
+/* The signal colours are set against the PAGE, and these two buttons carry a
+   wash of that same colour behind them, so the word ends up dark-on-dark:
+   measured 2.37 and 2.32 inside the room, against DESIGN.md's own floor of
+   4.5 for body and 3 for large text. The word is 28px on a laptop but 21px on
+   a phone, which is under the large-text threshold, so 4.5 is the bar it has
+   to clear. Lifted until it does — measured in place at 4.78 and 4.74, with
+   the border and the wash still carrying the colour. */
+.btn-choice-good { background: var(--sig-good-wash); border-color: var(--sig-good-rule); color: rgb(158, 214, 181); }
 .btn-choice-good:hover:not(:disabled) { background: var(--sig-good-rule); }
-.btn-choice-bad { background: var(--sig-bad-wash); border-color: var(--sig-bad-rule); color: var(--sig-bad); }
+.btn-choice-bad { background: var(--sig-bad-wash); border-color: var(--sig-bad-rule); color: rgb(244, 180, 166); }
 .btn-choice-bad:hover:not(:disabled) { background: var(--sig-bad-rule); }
+/* the sub-line is small text on the same wash and needs the same treatment */
+.btn-choice .choice-sub { color: inherit; opacity: .82; }
 
 /* ── cards & chips ────────────────────────────────────────────────────── */
 .card {
@@ -984,7 +1002,9 @@ button.chip:hover:not(:disabled) { border-color: var(--text-secondary); color: v
 .empty, .empty-state { color: var(--text-secondary); }
 .empty { padding: var(--sp-6); font-size: var(--fs-sm); }
 .empty-state { padding: var(--sp-6); display: flex; flex-direction: column; gap: var(--sp-3); align-items: flex-start; }
-.empty-art { font-size: var(--fs-lg); color: var(--foil); letter-spacing: var(--track-wide); }
+/* --foil measured 2.72 here, under DESIGN.md's own 3:1 floor for large text.
+   The ornament is the anchor of an empty state, not decoration you can ignore. */
+.empty-art { font-size: var(--fs-lg); color: var(--text-tertiary); letter-spacing: var(--track-wide); }
 .empty-state h3 { font-family: var(--font-display); font-size: var(--fs-xl); color: var(--text-primary); }
 .empty-state p { max-width: 46ch; font-size: var(--fs-sm); }
 .empty-cta { display: flex; gap: var(--sp-3); flex-wrap: wrap; margin-top: var(--sp-2); }
@@ -1716,4 +1736,16 @@ a.chip:hover { border-color: var(--text-secondary); color: var(--text-primary); 
 @media (max-width: 560px) {
   .emp-row { grid-template-columns: 1fr auto; }
   .emp-bar { grid-column: 1 / -1; order: 3; }
+}
+
+/* ── the nav strip on a genuinely narrow phone ─────────────────────────────
+   At ≤640 the masthead is designed as a single horizontally scrollable row
+   with the scrollbar hidden — which is fine when everything fits, and at 375
+   it now does (measured: 343px of content in a 343px strip). Below that it
+   does not, and a hidden scrollbar means the last item is simply gone with
+   nothing to say so: at 320 "THE INDEX" sat 55px past the edge. Let it wrap
+   instead. Two short rows hide nothing, and this rule sits last on purpose —
+   the ≤640 block that sets nowrap comes later in the file than the ≤480 one. */
+@media (max-width: 380px) {
+  .nav-links { flex-wrap: wrap; overflow-x: visible; row-gap: var(--sp-1); }
 }

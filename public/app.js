@@ -548,6 +548,22 @@ function renderOffline() {
   enterView();
 }
 
+/* A page that is not here says so, in the archive's own words, and offers the
+   two doors worth opening. */
+function renderNotFound(path) {
+  setRegister(false);
+  $view.innerHTML = runheadHtml("Not on file") +
+    '<section class="sheet"><div class="card empty-state not-found"><div class="empty-art">◆</div>' +
+    "<h3>No such page in the archive</h3>" +
+    "<p>Nothing is catalogued under <b>" + esc(path) + "</b>. It may have been a mistyped address, or a link to something that was never printed.</p>" +
+    '<div class="reveal-actions">' +
+      '<a class="btn btn-primary" href="#/play">Take a seat</a>' +
+      '<a class="btn btn-quiet" href="#/">Back to the arena</a>' +
+    "</div></div></section>" +
+    folioHtml("Not on file");
+  enterView();
+}
+
 function setNav(path) {
   document.querySelectorAll(".nav-link").forEach((a) => {
     a.classList.toggle("active", a.dataset.path === path);
@@ -571,7 +587,11 @@ function route() {
   else if (path === "/watch") renderWatch(params);
   else if (path === "/board") renderBoard();
   else if (path === "/rules") renderRules(params);
-  else renderHome();
+  else if (path === "/" || path === "") renderHome();
+  /* Anything else used to render home, so a mistyped address quietly became a
+     different page and a broken link looked like it had worked. Same shape as
+     the archive's answer for a receipt that is not on file. */
+  else renderNotFound(path);
   /* instant, not smooth — html{scroll-behavior:smooth} must not animate route jumps */
   window.scrollTo({ top: 0, behavior: "auto" });
 }
