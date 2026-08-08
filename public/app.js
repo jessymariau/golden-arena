@@ -2216,7 +2216,8 @@ function empireLiveHtml() {
 
   if (!d.running && d.winner) html += empireVerdictHtml(d);
   const seats = empireSeats(d);
-  html += '<div class="match-list">' + (d.log || []).slice().reverse().map((t) => empireTurnHtml(t, seats)).join("") + "</div>";
+  html += '<div class="match-list">' + (d.log || []).slice().reverse().map((t) =>
+    empireTurnHtml(t, seats, empireState.auto.has(String(t.n)))).join("") + "</div>";
   return html;
 }
 
@@ -2323,7 +2324,7 @@ function empireArcs(d) {
   return [...arcs.values()].filter((a) => a.moved || a.promised || a.broken || a.raids);
 }
 
-function empireArcSvg(a, p0, p1, top) {
+function empireArcSvg(a, p0, p1, top, arcIndex) {
   const dx = p1[0] - p0[0], dy = p1[1] - p0[1], len = Math.hypot(dx, dy) || 1;
   /* every arc bows RIGHT of travel: that is what separates a→b from b→a, and
      it lifts the two diagonals off the exact centre where they would cross */
@@ -2366,8 +2367,11 @@ function empireArcSvg(a, p0, p1, top) {
     cuts += '<path class="eg-cut-halo" d="' + seg + '"/><path class="eg-cut" d="' + seg + '"/>';
   }
 
-  return '<g class="eg-edge"><title>' + esc(a.from + " to " + a.to + ": " + empireArcLine(a)) + "</title>" +
-    '<path class="eg-arc eg-' + kind + '" style="stroke-width:' + w + '" d="M' + p0[0] + " " + p0[1] +
+  /* pathLength=1 normalises every arc for the engrave animation: a dash of 1
+     drawn from offset 1 to 0 traces the line at the same pace whatever its
+     true length. The talk arcs keep their real dash pattern and fade instead. */
+  return '<g class="eg-edge" style="--arc-i:' + (arcIndex || 0) + '"><title>' + esc(a.from + " to " + a.to + ": " + empireArcLine(a)) + "</title>" +
+    '<path class="eg-arc eg-' + kind + '"' + (kind === "talk" ? "" : ' pathLength="1"') + ' style="stroke-width:' + w + '" d="M' + p0[0] + " " + p0[1] +
       "Q" + cx.toFixed(1) + " " + cy.toFixed(1) + " " + p1[0] + " " + p1[1] + '"/>' + cuts +
     '<g transform="translate(' + hx.toFixed(1) + "," + hy.toFixed(1) + ") rotate(" +
       (Math.atan2(ty, tx) * 180 / Math.PI).toFixed(1) + ')">' + head + "</g>" +
@@ -2442,7 +2446,7 @@ function empireGraphHtml(d) {
     '<figcaption class="eg-title">Who gave what to whom</figcaption>' +
     '<svg class="eg-plate" viewBox="0 0 300 200" role="img" aria-label="' +
       esc("Who gave what to whom. " + summary) + '">' +
-      arcs.map((a) => empireArcSvg(a, EMP_POS[seats.indexOf(a.from)], EMP_POS[seats.indexOf(a.to)], top)).join("") +
+      arcs.map((a, i) => empireArcSvg(a, EMP_POS[seats.indexOf(a.from)], EMP_POS[seats.indexOf(a.to)], top, i)).join("") +
       nodes +
     "</svg>" +
     (arcs.length ? EMP_KEY + empireLedgerHtml(arcs)
@@ -2465,7 +2469,7 @@ function empireVerdictHtml(d) {
   "</div>";
 }
 
-function empireTurnHtml(t, seats) {
+function empireTurnHtml(t, seats, fresh) {
   const id = String(t.n);
   const pub = (t.talk && t.talk.public) || [];
   const priv = (t.talk && t.talk.private) || [];
@@ -2473,8 +2477,11 @@ function empireTurnHtml(t, seats) {
   const raids = (t.resolution && t.resolution.raids) || [];
   const marks = t.newMarks || [];
   const headline = empireTurnHeadline(t);
-
-  return '<details class="matchcard" data-turn="' + esc(id) + '"' + (empireState.open.has(id) ? " open" : "") + ">" +
+  /* Only the FRESH card (the turn that just landed, auto-opened) animates —
+     the feed repaints once per real turn since the signature skip, so its
+     entrances fire exactly once, at the moment the turn arrives, and closed
+     history stays still. The stagger itself is nth-child in CSS. */
+  return '<details class="matchcard' + (fresh ? " mc-fresh" : "") + '" data-turn="' + esc(id) + '"' + (empireState.open.has(id) ? " open" : "") + ">" +
     '<summary><span class="mc-vs">Turn ' + t.n + "</span>" +
     '<span class="mc-right">' + esc(headline) +
       (marks.length ? '<span class="emp-mark">' + marks.length + " marked</span>" : "") + "</span></summary>" +

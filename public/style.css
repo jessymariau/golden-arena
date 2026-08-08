@@ -1840,3 +1840,77 @@ a.chip:hover { border-color: var(--text-secondary); color: var(--text-primary); 
 @media (max-width: 380px) {
   .nav-links { flex-wrap: wrap; overflow-x: visible; row-gap: var(--sp-1); }
 }
+
+/* ═══ THE ARCHIVE PRINTS ITSELF — motion at the moment a turn lands ═════
+   Empire is a game, and a landed turn should FEEL like one: the plate
+   engraves its arcs, the standings measure themselves out, the fresh
+   turn card prints and then reads aloud — talk, deals, the reveal, the
+   raids, the damage — in the order a turn actually happens.
+   The feed repaints exactly once per landed turn (the signature skip),
+   so every entrance here fires once, at the right moment, never on a
+   poll. Plate animations are scoped to .eg-plate because the key's
+   little legend SVGs share the arc classes and must hold still; card
+   animations are scoped to the fresh card so closed history stays put.
+   Reduced motion gets the finished state instantly. */
+@media (prefers-reduced-motion: no-preference) {
+  /* solid arcs draw themselves; pathLength=1 in the SVG normalises the
+     pace so a short arc and a long one finish together */
+  .eg-plate .eg-kept, .eg-plate .eg-harm {
+    stroke-dasharray: 1;
+    animation: eg-engrave 620ms var(--ease-out) both;
+    animation-delay: calc(var(--arc-i, 0) * 70ms);
+  }
+  /* dashed talk arcs keep their dash pattern and surface instead */
+  .eg-plate .eg-talk {
+    animation: eg-surface 460ms linear both;
+    animation-delay: calc(var(--arc-i, 0) * 70ms);
+  }
+  /* heads, barbs and ticks land only after their line has arrived */
+  .eg-plate .eg-tip, .eg-plate .eg-barb, .eg-plate .eg-cut, .eg-plate .eg-cut-halo {
+    animation: eg-surface 220ms var(--ease-out) both;
+    animation-delay: calc(var(--arc-i, 0) * 70ms + 460ms);
+  }
+  /* the standings re-measure themselves on every landed turn */
+  .emp-board .emp-bar i { animation: emp-measure 640ms var(--ease-out) both; }
+
+  /* the fresh turn card prints… */
+  .mc-fresh { animation: paperSettle 460ms var(--ease-out) both; }
+  /* …then reads aloud. Fixed phase offsets, nth-child stagger inside each
+     family; anything past the eighth line shares the last beat. */
+  .mc-fresh .emp-talk .bubble { animation: line-in 240ms var(--ease-out) both; animation-delay: 990ms; }
+  .mc-fresh .emp-talk .bubble:nth-child(1) { animation-delay: 220ms; }
+  .mc-fresh .emp-talk .bubble:nth-child(2) { animation-delay: 330ms; }
+  .mc-fresh .emp-talk .bubble:nth-child(3) { animation-delay: 440ms; }
+  .mc-fresh .emp-talk .bubble:nth-child(4) { animation-delay: 550ms; }
+  .mc-fresh .emp-talk .bubble:nth-child(5) { animation-delay: 660ms; }
+  .mc-fresh .emp-talk .bubble:nth-child(6) { animation-delay: 770ms; }
+  .mc-fresh .emp-talk .bubble:nth-child(7) { animation-delay: 880ms; }
+  .mc-fresh .emp-deals li { animation: line-in 240ms var(--ease-out) both; animation-delay: 1180ms; }
+  .mc-fresh .emp-deals li:nth-child(1) { animation-delay: 900ms; }
+  .mc-fresh .emp-deals li:nth-child(2) { animation-delay: 970ms; }
+  .mc-fresh .emp-deals li:nth-child(3) { animation-delay: 1040ms; }
+  .mc-fresh .emp-deals li:nth-child(4) { animation-delay: 1110ms; }
+  /* the REVEAL — four hands turning over is the whole mechanic */
+  .mc-fresh .emp-reveal { perspective: 520px; }
+  .mc-fresh .emp-act {
+    animation: chip-reveal 340ms var(--ease-out) both;
+    transform-origin: 50% 100%;
+    animation-delay: 1250ms;
+  }
+  .mc-fresh .emp-act:nth-child(2) { animation-delay: 1340ms; }
+  .mc-fresh .emp-act:nth-child(3) { animation-delay: 1430ms; }
+  .mc-fresh .emp-act:nth-child(4) { animation-delay: 1520ms; }
+  .mc-fresh .emp-raids li { animation: line-in 240ms var(--ease-out) both; animation-delay: 1750ms; }
+  .mc-fresh .emp-raids li:nth-child(2) { animation-delay: 1850ms; }
+  .mc-fresh .emp-raids li:nth-child(3) { animation-delay: 1950ms; }
+  .mc-fresh .emp-breaches li { animation: line-in 240ms var(--ease-out) both; animation-delay: 2050ms; }
+  .mc-fresh .emp-breaches li:nth-child(2) { animation-delay: 2130ms; }
+  .mc-fresh .emp-breaches li:nth-child(3) { animation-delay: 2210ms; }
+
+  /* the verdict prints like the receipt it is */
+  .emp-verdict { animation: paperSettle 460ms var(--ease-out) both; }
+}
+@keyframes eg-engrave { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes eg-surface { from { opacity: 0; } to { opacity: 1; } }
+@keyframes emp-measure { from { width: 0; } }
+@keyframes chip-reveal { from { opacity: 0; transform: rotateX(64deg); } to { opacity: 1; transform: none; } }
