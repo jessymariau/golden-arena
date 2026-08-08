@@ -131,7 +131,10 @@ function publicState(match) {
       ? match.transcript.map((t) => ({ ...t, text: mask(t.text) }))
       : match.transcript,
     round: match.round,
-    rounds: match.pdHistory || null,
+    /* the rounds that have RESOLVED, whatever the game calls them. Every entry
+       is settled history — numbers and seat indices, nothing anybody is still
+       deciding — so it carries no name to mask and leaks nothing. */
+    rounds: match.pdHistory || match.ultRounds || match.trustRounds || null,
     waitingFor: pairs.length && match.waitingFor
       ? { ...match.waitingFor, note: mask(match.waitingFor.note) }
       : match.waitingFor,

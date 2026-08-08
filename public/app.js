@@ -1344,12 +1344,54 @@ async function copyReceiptLink(id) {
    server for effect and nothing is faked: the beat is a beat, not a spinner.
    Click anywhere to skip it.
    ═══════════════════════════════════════════════════════════════════════ */
-const SHOW = { lock: 700, flip: 560, read: 440, pay: 820 };
-const SHOWDOWN_GAMES = { splitsteal: true, prisoners: true };
+const SHOW = { lock: 700, settle: 420, flip: 560, read: 440, pay: 820 };
 const PD_ROUNDS = 5;
+const POT = 100;
+const TRUST_MULT = 3;        /* mirrors TRUST_MULT in lib/games.js */
+
+/* Which hands are UNKNOWN at the moment you commit, keyed by the decision you
+   are committing. A card goes face-down only for something nobody has decided
+   yet: an ultimatum responder can already see the offer, so dealing it face
+   down would be the theatre lying about what you knew. Split or Steal and the
+   Dilemma are the two where neither of you knows, and they turn over together.
+   A decision missing from this table gets no showdown at all. */
+const HIDDEN_AT = {
+  splitsteal: [true, true],
+  prisoners: [true, true],
+  offer: [false, true],       /* you slid it across; they have not answered */
+  respond: [false, false],    /* the offer was face-up before you touched it */
+  send: [false, true],        /* the wire has landed; the return has not */
+  return: [false, false],     /* you already knew what they wired */
+};
 
 const wait = (ms) => new Promise((r) => setTimeout(r, Math.max(0, ms)));
 const TAKING = /STEAL|DEFECT|REJECT/i;
+const BLANK_HAND = { word: "", note: "", tone: "flat" };
+
+/* A choice that was a WORD carries its own verdict. A choice that was a sum
+   does not, so it gets a verb under it — two bare figures facing each other
+   say nothing about which one was the wire and which one came back. */
+function wordHand(w) {
+  if (!w) return BLANK_HAND;
+  return { word: w, note: "", tone: TAKING.test(w) ? "bad" : "good" };
+}
+function sumHand(amount, note, tone) {
+  return { word: money(amount), note: note, tone: tone || "flat" };
+}
+
+/* Ultimatum has no cooperative move: taking the money on the table is not a
+   virtue, so ACCEPT carries no colour and only the burn reads red. The
+   judgement lives in the CUT — half or more is the fair split, a fifth or less
+   is the lowball the receipt itself flags. Green on a swallowed $15 said the
+   opposite of what had just happened. */
+function offerHand(offer) {
+  const n = Number(offer) || 0;
+  return sumHand(n, "offered", n >= POT / 2 ? "good" : n <= POT / 5 ? "bad" : "flat");
+}
+function respondHand(decision) {
+  return { word: decision || "", note: "", tone: decision === "REJECT" ? "bad" : "flat" };
+}
+const lastRound = (st) => (st.rounds || [])[(st.rounds || []).length - 1] || null;
 
 /* A blind seat is lettered, so mark it with its own letter rather than the C
    of Contestant. */
@@ -1358,26 +1400,90 @@ function monogramOf(label) {
   return (seat ? seat[1] : String(label || "?").trim().charAt(0)).toUpperCase();
 }
 
-/* Split or Steal turns over once, at the end. Prisoner's Dilemma turns over
-   every round, so it reads its hands from the round that just resolved. */
+/* Split or Steal turns over once, at the end. Everything else turns over per
+   round, so they read their hands out of the round that just resolved. Seats
+   are read off the round record rather than assumed, because the roles swap:
+   you propose in round two and respond in round one. */
 function showdownData(st) {
   if (st.game === "prisoners") {
     const rounds = st.rounds || [];
     const r = rounds[rounds.length - 1] || { decisions: [], payoffs: [0, 0] };
     return {
-      words: [0, 1].map((i) => (r.decisions[i] || {}).decision || ""),
+      hands: [0, 1].map((i) => wordHand((r.decisions[i] || {}).decision || "")),
       payoffs: r.payoffs || [0, 0],
       label: "round",
       figure: rounds.length + " of " + PD_ROUNDS,
     };
   }
+
+  if (st.game === "ultimatum") {
+    const r = lastRound(st);
+    if (!r) return blankShowdown();
+    const hands = [];
+    hands[r.proposer] = offerHand(r.offer);
+    hands[1 - r.proposer] = respondHand(r.decision);
+    return { hands: hands, payoffs: r.payoffs || [0, 0], label: "the pot", figure: money(POT) };
+  }
+
+  if (st.game === "trust") {
+    const r = lastRound(st);
+    if (!r) return blankShowdown();
+    const hands = [];
+    hands[r.investor] = sumHand(r.send, "wired");
+    /* Sending back less than arrived is not the betrayal — the money tripled.
+       Failing to make the investor WHOLE is, which is the same test the
+       receipt applies. Wire nothing and there is nothing to judge. */
+    hands[1 - r.investor] = sumHand(r.ret, "sent back",
+      !r.send ? "flat" : r.ret >= r.send ? "good" : "bad");
+    return {
+      hands: hands,
+      payoffs: r.payoffs || [0, 0],
+      label: "on the table",
+      /* what the round is actually worth once the wire has tripled: the two
+         slips add up to exactly this, which is the whole trick made visible */
+      figure: money(POT + (TRUST_MULT - 1) * r.send),
+    };
+  }
+
   const rp = ((st.result || {}).receipt || {}).players || [];
   return {
-    words: [0, 1].map((i) => (rp[i] && rp[i].words && rp[i].words[0]) || ""),
+    hands: [0, 1].map((i) => wordHand((rp[i] && rp[i].words && rp[i].words[0]) || "")),
     payoffs: (st.result || {}).payoffs || [0, 0],
     label: "the pot",
-    figure: money(100),
+    figure: money(POT),
   };
+}
+
+function blankShowdown() {
+  return { hands: [BLANK_HAND, BLANK_HAND], payoffs: [0, 0], label: "the pot", figure: money(POT) };
+}
+
+/* What is known the instant you commit, before the server has answered. The
+   hidden side stays blank; the rest is dealt face-up straight away, so the
+   table is honest for the whole hold rather than only after the turn. */
+function stagedHands(wf, payload) {
+  const d = (wf && wf.decision) || {};
+  switch (d.type) {
+    case "offer": return [offerHand(payload.offer), BLANK_HAND];
+    case "respond": return [respondHand(payload.decision), offerHand(d.offer)];
+    case "send": return [sumHand(payload.send, "wired"), BLANK_HAND];
+    case "return": {
+      const sent = Number((d.received || {}).send) || 0;
+      const ret = Number(payload.return) || 0;
+      return [sumHand(ret, "sent back", !sent ? "flat" : ret >= sent ? "good" : "bad"), sumHand(sent, "wired")];
+    }
+    default: return [BLANK_HAND, BLANK_HAND];
+  }
+}
+
+function stagedPot(st, wf, payload) {
+  const d = (wf && wf.decision) || {};
+  if (st.game === "prisoners") return { label: "round", figure: ((st.rounds || []).length + 1) + " of " + PD_ROUNDS };
+  if (st.game === "trust") {
+    const sent = d.type === "send" ? Number(payload.send) || 0 : Number((d.received || {}).send) || 0;
+    return { label: "on the table", figure: money(POT + (TRUST_MULT - 1) * sent) };
+  }
+  return { label: "the pot", figure: money(POT) };
 }
 
 /* Read from the money, not the words: a pot that pays nobody has burned,
@@ -1389,44 +1495,70 @@ function showdownOutcome(payoffs) {
   return a > b ? "took-0" : "took-1";
 }
 
-function handHtml(side, label, word) {
-  return '<div class="hand hand-' + side + '">' +
+function handHtml(side, label, hand, open) {
+  const h = hand || BLANK_HAND;
+  return '<div class="hand hand-' + side + (open ? " hand-open" : "") + '">' +
     '<span class="nameplate"><span class="monogram" aria-hidden="true">' +
       esc(monogramOf(label)) + "</span>" +
       '<span class="nameplate-who">' + esc(label) + "</span></span>" +
     '<div class="flipper"><span class="face face-back" aria-hidden="true"></span>' +
-      '<span class="face face-front ' + (TAKING.test(word || "") ? "face-bad" : "face-good") + '">' +
-      esc(word || "") + "</span></div>" +
+      '<span class="face face-front face-' + esc(h.tone) + '">' +
+        '<b class="face-word">' + esc(h.word) + "</b>" +
+        '<small class="face-note">' + esc(h.note) + "</small>" +
+      "</span></div>" +
   "</div>";
 }
 
 function showdownHtml(st, s) {
   const show = s.show;
   const d = showdownData(st);
+  /* what the player is entitled to see right now, which before the server
+     answers is only what they themselves just did */
+  const hands = show.hands || d.hands;
+  const pot = show.pot || { label: d.label, figure: d.figure };
+  const open = show.open || [false, false];
   const opp = st.players[1] || { label: "Them" };
 
   return '<section class="showdown" data-phase="' + esc(show.phase) + '" data-outcome="' + showdownOutcome(d.payoffs) + '" data-action="skip-showdown">' +
     '<div class="showdown-table">' +
-      handHtml("you", "You", d.words[0]) +
+      handHtml("you", "You", hands[0], open[0]) +
       '<div class="pot" aria-hidden="true">' +
-        '<span class="pot-label">' + esc(d.label) + "</span>" +
-        '<span class="pot-figure">' + esc(d.figure) + "</span>" +
-        slipHtml("l", d.payoffs[0], d.words[0]) + slipHtml("r", d.payoffs[1], d.words[1]) +
+        '<span class="pot-label">' + esc(pot.label) + "</span>" +
+        '<span class="pot-figure">' + esc(pot.figure) + "</span>" +
+        slipHtml("l", d.payoffs[0], hands[0]) + slipHtml("r", d.payoffs[1], hands[1]) +
         '<span class="pot-strike"></span>' +
       "</div>" +
-      handHtml("them", opp.label, d.words[1]) +
+      handHtml("them", opp.label, hands[1], open[1]) +
     "</div>" +
     '<p class="showdown-line" role="status">' +
-      esc(show.phase === "lock" ? (show.landed ? "Turning them over." : "Locked. Waiting on them.") : "") +
+      esc(show.phase === "lock" && show.turns ? (show.landed ? "Turning them over." : "Locked. Waiting on them.") : "") +
     "</p></section>";
 }
 
 /* The beat after the turn used to be silent AND still. One line, in the
-   archive's voice, said at the moment the money moves. */
+   archive's voice, said at the moment the money moves. Naming the seat that
+   acted matters more here than the outcome does: "you took it" is the whole
+   story of a steal, and "they burned it" is the whole story of a rejection. */
 function verdictLine(st) {
-  const d = showdownData(st);
   const them = (st.players && st.players[1] ? st.players[1].label : "They");
-  switch (showdownOutcome(d.payoffs)) {
+  const who = (seat) => (seat === 0 ? "You" : them);
+  const r = lastRound(st);
+
+  if (st.game === "ultimatum" && r) {
+    const responder = 1 - r.proposer;
+    return r.decision === "ACCEPT"
+      ? who(responder) + " took the " + money(r.offer) + "."
+      : who(responder) + " burned it.";
+  }
+  if (st.game === "trust" && r) {
+    const trustee = 1 - r.investor;
+    if (!r.send) return who(r.investor) + " wired nothing.";
+    if (r.ret >= r.send) return who(trustee) + " made " + (trustee === 0 ? "them" : "you") + " whole.";
+    if (!r.ret) return who(trustee) + " kept the lot.";
+    return who(trustee) + " sent back " + money(r.ret) + " of " + money(r.send * TRUST_MULT) + ".";
+  }
+
+  switch (showdownOutcome(showdownData(st).payoffs)) {
     case "burned": return "Nobody gets paid.";
     case "took-0": return "You took it.";
     case "took-1": return them + " took it.";
@@ -1434,9 +1566,13 @@ function verdictLine(st) {
   }
 }
 
-function slipHtml(side, payoff, word) {
+/* The colour follows the ACT on that side of the table, not the size of the
+   pile: money that was taken reads red even when taking it paid better, and a
+   sum that was merely staked — an offer, a wire — carries no verdict at all. */
+function slipHtml(side, payoff, hand) {
+  const tone = (hand || BLANK_HAND).tone;
   return '<span class="pot-slip pot-slip-' + side +
-    (payoff ? "" : " is-nil") + (TAKING.test(word || "") ? " slip-bad" : " slip-good") +
+    (payoff ? "" : " is-nil") + (tone === "flat" ? "" : " slip-" + tone) +
     '">' + money(payoff) + "</span>";
 }
 
@@ -1448,24 +1584,37 @@ function fillShowdown(st) {
   const root = document.querySelector(".showdown");
   if (!root) return;
   const d = showdownData(st);
+  const s = playState;
+  /* keep the staged copy in step, so a re-render mid-showdown paints the
+     settled table rather than reverting to what was known at the lock */
+  if (s.show) { s.show.hands = d.hands; s.show.pot = { label: d.label, figure: d.figure }; }
 
   root.dataset.outcome = showdownOutcome(d.payoffs);
+  const lab = root.querySelector(".pot-label");
+  if (lab) lab.textContent = d.label;
   const fig = root.querySelector(".pot-figure");
   if (fig) fig.textContent = d.figure;
-  root.querySelectorAll(".face-front").forEach((el, i) => {
-    const taking = TAKING.test(d.words[i] || "");
-    el.textContent = d.words[i] || "";
-    el.classList.toggle("face-bad", taking);
-    el.classList.toggle("face-good", !taking);
+
+  root.querySelectorAll(".hand").forEach((handEl, i) => {
+    const h = d.hands[i] || BLANK_HAND;
+    const word = handEl.querySelector(".face-word");
+    const note = handEl.querySelector(".face-note");
+    const front = handEl.querySelector(".face-front");
+    if (word) word.textContent = h.word;
+    if (note) note.textContent = h.note;
+    if (front) {
+      front.classList.remove("face-good", "face-bad", "face-flat");
+      front.classList.add("face-" + h.tone);
+    }
   });
   [".pot-slip-l", ".pot-slip-r"].forEach((sel, i) => {
     const el = root.querySelector(sel);
     if (!el) return;
-    const taking = TAKING.test(d.words[i] || "");
+    const tone = (d.hands[i] || BLANK_HAND).tone;
     el.textContent = money(d.payoffs[i]);
     el.classList.toggle("is-nil", !d.payoffs[i]);
-    el.classList.toggle("slip-bad", taking);
-    el.classList.toggle("slip-good", !taking);
+    el.classList.toggle("slip-bad", tone === "bad");
+    el.classList.toggle("slip-good", tone === "good");
   });
 }
 
@@ -1483,19 +1632,30 @@ function setShowLine(text) {
   if (el) el.textContent = text;
 }
 
-/* Falls back to the plain submit wherever the theatre would be a lie: reduced
-   motion, or a game whose choices are not simultaneous. An ultimatum responder
-   already knows the offer, so there is nothing to turn over. */
+/* Falls back to the plain submit under reduced motion, and for anything not in
+   HIDDEN_AT — a message has nothing to turn over. Where only one hand is
+   unknown the table still assembles and the money still moves; it just does
+   not pretend that something you could already read was a secret. */
 async function decideStaged(payload) {
   const s = playState;
   if (s.inFlight || !s.matchId) return;
   const st0 = s.match;
-  if (REDUCED || !st0 || !SHOWDOWN_GAMES[st0.game]) return sendInput(payload);
+  const wf = st0 && st0.waitingFor;
+  const hidden = wf && wf.kind === "decision" ? HIDDEN_AT[(wf.decision || {}).type] : null;
+  if (REDUCED || !hidden) return sendInput(payload);
 
   const token = ++s.showToken;
   const live = () => s.showToken === token && routePath() === "/play";
   const roundsBefore = (st0.rounds || []).length;
-  s.show = { phase: "lock", landed: false };
+  const turns = hidden.some(Boolean);
+  s.show = {
+    phase: "lock",
+    landed: false,
+    turns: turns,
+    open: hidden.map((h) => !h),
+    hands: stagedHands(wf, payload),
+    pot: stagedPot(st0, wf, payload),
+  };
   s.inFlight = true;
   renderPlayNow();
   /* The transcript has done its job; the table takes the screen. Without this
@@ -1504,15 +1664,22 @@ async function decideStaged(payload) {
   if (table) table.scrollIntoView({ block: "center", behavior: REDUCED ? "auto" : "smooth" });
   const lockedAt = Date.now();
 
+  const forMatch = s.matchId;
   let st;
   try {
-    st = await api("/api/match/" + encodeURIComponent(s.matchId) + "/input", { body: payload });
+    st = await api("/api/match/" + encodeURIComponent(forMatch) + "/input", { body: payload });
   } catch (err) {
-    if (live()) { s.show = null; s.inFlight = false; refusal(err, "The table hiccuped. Try that again."); renderPlayNow(); }
+    if (s.matchId === forMatch) { s.show = null; s.inFlight = false; refusal(err, "The table hiccuped. Try that again."); renderPlayNow(); }
     return;
   }
-  if (!live()) return;
+  /* A skip abandons the ANIMATION. It must never abandon the ANSWER: dropping
+     the response here left the client replaying a move the server had already
+     taken, so the next submit — and every one after it — came back 400 and the
+     match was dead on the table. Only a DIFFERENT match may discard this.
+     Reproduced on 11c2efb by skipping Split or Steal 40ms in: 21 straight 400s. */
+  if (s.matchId !== forMatch) return;
   s.match = st; s.dockVal = null; s.refetchN = 0;
+  if (!live()) { s.show = null; s.inFlight = false; renderPlayNow(); maybeRefetch(); return; }
 
   const roundLanded = (st.rounds || []).length > roundsBefore;
   if ((st.done && st.result) || roundLanded) {
@@ -1521,14 +1688,18 @@ async function decideStaged(payload) {
        seconds. Waiting is not drama. The hold is. */
     s.show.landed = true;
     fillShowdown(st);
-    setShowLine("Turning them over.");
-    await wait(lockedAt + SHOW.lock - Date.now());
+    if (turns) setShowLine("Turning them over.");
+    /* nothing turning over means nothing to wait for: hold just long enough
+       to read the table, then pay */
+    await wait(lockedAt + (turns ? SHOW.lock : SHOW.settle) - Date.now());
     if (!live()) return;
 
-    setShowPhase("flip");
-    setShowLine("");
-    await wait(SHOW.flip + SHOW.read);
-    if (!live()) return;
+    if (turns) {
+      setShowPhase("flip");
+      setShowLine("");
+      await wait(SHOW.flip + SHOW.read);
+      if (!live()) return;
+    }
 
     setShowPhase("pay");
     setShowLine(verdictLine(st));
@@ -2054,12 +2225,12 @@ document.addEventListener("click", (e) => {
       const pitch = document.getElementById("dock-pitch");
       const payload = { offer: Number(r ? r.value : 50) };
       if (pitch && pitch.value.trim()) payload.text = pitch.value.trim().slice(0, 280);
-      sendInput(payload);
+      decideStaged(payload);
       break;
     }
     case "wire": {
       const r = document.getElementById("dock-range");
-      sendInput({ send: Number(r ? r.value : 0) });
+      decideStaged({ send: Number(r ? r.value : 0) });
       break;
     }
     case "send-back": {
@@ -2067,7 +2238,7 @@ document.addEventListener("click", (e) => {
       const line = document.getElementById("dock-line");
       const payload = { return: Number(r ? r.value : 0) };
       if (line && line.value.trim()) payload.text = line.value.trim().slice(0, 280);
-      sendInput(payload);
+      decideStaged(payload);
       break;
     }
     case "play-again": playAgain(); break;

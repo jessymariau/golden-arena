@@ -1428,9 +1428,16 @@ a.chip:hover { border-color: var(--text-secondary); color: var(--text-primary); 
 .showdown[data-phase="flip"] .flipper,
 .showdown[data-phase="pay"] .flipper { transform: rotateY(180deg); }
 
+/* A hand that was never secret is dealt face-up and never turns: an ultimatum
+   responder can read the offer before they answer it, so a card going over
+   would be the theatre claiming a suspense that did not exist. Same angle in
+   every phase means the transform never changes and nothing animates. */
+.hand-open .flipper { transform: rotateY(180deg); }
+
 .face {
   position: absolute; inset: 0;
-  display: grid; place-items: center;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: var(--sp-1);
   border-radius: var(--r);
   backface-visibility: hidden; -webkit-backface-visibility: hidden;
   text-align: center; padding: var(--sp-2);
@@ -1451,8 +1458,20 @@ a.chip:hover { border-color: var(--text-secondary); color: var(--text-primary); 
   font-size: clamp(.82rem, 3.1vw, 1.12rem);
   letter-spacing: .05em; text-transform: uppercase; line-height: 1.05;
 }
+.face-word { font: inherit; letter-spacing: inherit; }
+/* the verb under the figure: $60 and $45 facing each other are two numbers
+   with no story until one says "wired" and the other says "sent back" */
+.face-note {
+  font-family: var(--font-body); font-size: var(--fs-xs); font-weight: 400;
+  letter-spacing: var(--track-label); text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.face-note:empty { display: none; }
 .face-good { color: var(--sig-good); }
 .face-bad  { color: var(--sig-bad); }
+/* a sum that was staked rather than judged — an offer, a wire — carries the
+   page's own ink, because colouring it would be scoring it */
+.face-flat { color: var(--text-primary); }
 
 /* ── the pot: an object on the table, not a caption ── */
 .pot { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: var(--sp-1); min-width: 5.5ch; }
@@ -1513,7 +1532,13 @@ a.chip:hover { border-color: var(--text-secondary); color: var(--text-primary); 
   .showdown { padding: var(--sp-6) var(--sp-2) var(--sp-5); }
   .showdown-table { gap: var(--sp-3); }
   .monogram { width: 26px; height: 26px; }
-  .nameplate-who { max-width: 11ch; }
+  /* 11ch broke the app's own default label mid-word — CONTEST | ANT B — because
+     a ch is measured on "0" while this line is tracked uppercase, which runs far
+     wider: "Contestant" measures 94px against 11ch = 71px. Measured in place,
+     not from a probe on the body, which reported a pre-webfont 8.22px/ch and
+     sent the first two attempts at this the wrong way. `anywhere` above is still
+     the last resort for an unbreakable model id. */
+  .nameplate-who { max-width: 15ch; }
   /* a narrower gap needs a narrower note, or the money lands on the card */
   .pot-slip { font-size: var(--fs-lg); }
 }
