@@ -642,7 +642,23 @@ async function seedIfEmpty() {
 // boot
 // ---------------------------------------------------------------------------
 await initStore();
+// A key that is PRESENT but misnamed looks exactly like no key at all: the
+// Secrets pane shows a green row, the app quietly serves demo mode, and
+// nothing anywhere says why. Same family as every other silent fallback this
+// codebase has produced. Say it at boot, loudly, with the fix in the line.
+function warnAboutNearMissKeys() {
+  if (hasServerKey()) return;
+  const near = Object.keys(process.env).filter((k) => k !== "OPENROUTER_API_KEY" && /open.?router/i.test(k));
+  if (!near.length) return;
+  console.warn(
+    `⚠  Found ${near.map((k) => `"${k}"`).join(", ")} in the environment but NOT "OPENROUTER_API_KEY", ` +
+    "which is the only name this app reads. Rename it to OPENROUTER_API_KEY and republish — " +
+    "until then every table is scripted and the app will say so."
+  );
+}
+
 app.listen(PORT, () => {
+  warnAboutNearMissKeys();
   console.log(`Golden Arena on :${PORT} (${hasServerKey() ? "LIVE on the server key" : "DEMO — visitors may bring their own key"}, storage=${storageMode()})`);
   seedIfEmpty().catch((err) => console.warn(`Seeding failed: ${err.message}`));
 });
