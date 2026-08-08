@@ -2190,7 +2190,7 @@ function empireLiveHtml() {
   }
   let html = "";
   if (d.error) html += '<p class="watch-error">House trouble: ' + esc(String(d.error)) + "</p>";
-  html += empireHonestyHtml(d) + empireStandingsHtml(d);
+  html += empireHonestyHtml(d) + empireStandingsHtml(d) + empireGraphHtml(d);
 
   const done = (d.log || []).length;
   html += '<div class="progress-line' + (d.running ? "" : " done") + '">' +
@@ -2232,6 +2232,206 @@ function empireStandingsHtml(d) {
       '<span class="emp-net">' + money(r.net) + '<span class="emp-sub">' + r.land + " land · " + money(r.coins) + "</span></span>" +
     "</div>";
   }).join("") + "</div>";
+}
+
+/* ── THE RELATIONSHIP PLATE · SPEC §7's "primary visual" ──────────────────
+   Four seats, twelve one-way links, and one rule that keeps it honest:
+   WIDTH IS ONLY EVER VALUE THAT ACTUALLY MOVED. A pair that negotiated all
+   game and delivered nothing keeps its dashed hairline forever, because a
+   thick warm line between two players who only ever talked is the same lie
+   the honesty counter was built to kill. Talk is dashed, delivery is solid,
+   harm is oxblood, and every link points at the player it was done to.
+   ───────────────────────────────────────────────────────────────────────── */
+const EMP_LAND_COIN = 50;   /* standings price a territory at 50 coins and the
+                               plate has to agree with the board above it */
+/* fixed seats: top, right, bottom, left. No physics, no layout pass — an
+   archive plate is engraved in the same place every time. */
+const EMP_POS = [[150, 28], [252, 100], [150, 172], [48, 100]];
+
+/* A finished run publishes the whole deduped breach ledger. While it is still
+   running the only broken promises on record are the per-turn ones plus the
+   debts already sitting unpaid — and a default RE-REPORTS every turn it stays
+   open, so it counts once, by id. Reading both sources at once double-counts. */
+function empireBroken(d) {
+  if ((d.breaches || []).length) return d.breaches;
+  const out = [], seen = new Set();
+  for (const t of d.log || []) {
+    for (const b of t.breaches || []) out.push(b);
+    for (const x of (t.resolution && t.resolution.defaults) || []) {
+      if (seen.has(x.id)) continue;
+      seen.add(x.id);
+      out.push({ by: x.debtor, to: x.creditor });
+    }
+  }
+  return out;
+}
+
+function empireArcs(d) {
+  const seats = ((d && d.opening) || []).map((p) => p.name);
+  const arcs = new Map();
+  /* A breach's `to` is a COMPOUND string for CONTRADICTION and DOUBLE_SOLD
+     ("Alpha & Echo"), so it is split before it reaches here — and anything
+     still not one of the four seats is dropped rather than minting a phantom
+     node called "Alpha & Echo". */
+  const bump = (a, b, field, n) => {
+    if (a === b || !seats.includes(a) || !seats.includes(b)) return;
+    let e = arcs.get(a + ">" + b);
+    if (!e) arcs.set(a + ">" + b, (e = { from: a, to: b, moved: 0, promised: 0, broken: 0, raids: 0, landed: 0 }));
+    e[field] += n === undefined ? 1 : n;
+  };
+  const worth = (coins, land) => (Number(coins) || 0) + ((land || []).length * EMP_LAND_COIN);
+
+  for (const t of (d && d.log) || []) {
+    const deals = t.deals || {}, res = t.resolution || {};
+    for (const o of deals.offers || []) bump(o.from, o.to, "promised");
+    for (const p of deals.pledges || []) bump(p.from, p.to, "promised");
+    /* a contract settles the instant it is accepted, both legs at once; only a
+       handshake waits for the ACT phase and turns up in `honoured` */
+    for (const r of deals.resolutions || []) {
+      if (r.outcome !== "EXECUTED") continue;
+      const o = r.offer || {};
+      bump(o.from, o.to, "moved", worth(o.giveCoins, o.giveLand));
+      bump(o.to, o.from, "moved", worth(o.wantCoins, o.wantLand));
+    }
+    for (const h of res.honoured || []) bump(h.from, h.to, "moved", worth(h.coins, h.land));
+    /* raids are many-to-one: each raider owns its own link to the target */
+    for (const r of res.raids || []) for (const who of r.raiders || []) {
+      bump(who, r.target, "raids");
+      if (r.success) bump(who, r.target, "landed");
+    }
+  }
+  for (const b of empireBroken(d)) {
+    for (const to of String(b.to == null ? "" : b.to).split(" & ")) bump(b.by, to.trim(), "broken");
+  }
+  /* a contract leg worth nothing creates a link that says nothing */
+  return [...arcs.values()].filter((a) => a.moved || a.promised || a.broken || a.raids);
+}
+
+function empireArcSvg(a, p0, p1, top) {
+  const dx = p1[0] - p0[0], dy = p1[1] - p0[1], len = Math.hypot(dx, dy) || 1;
+  /* every arc bows RIGHT of travel: that is what separates a→b from b→a, and
+     it lifts the two diagonals off the exact centre where they would cross */
+  const bow = len * 0.14;
+  const cx = (p0[0] + p1[0]) / 2 - (dy / len) * bow;
+  const cy = (p0[1] + p1[1]) / 2 + (dx / len) * bow;
+  const pt = (t) => [
+    (1 - t) * (1 - t) * p0[0] + 2 * (1 - t) * t * cx + t * t * p1[0],
+    (1 - t) * (1 - t) * p0[1] + 2 * (1 - t) * t * cy + t * t * p1[1]];
+  const tan = (t) => [
+    2 * (1 - t) * (cx - p0[0]) + 2 * t * (p1[0] - cx),
+    2 * (1 - t) * (cy - p0[1]) + 2 * t * (p1[1] - cy)];
+
+  const kind = (a.broken || a.raids) ? "harm" : a.moved ? "kept" : "talk";
+  const w = a.moved ? (1.6 + 4.2 * (a.moved / (top || 1))).toFixed(2) : 1;
+
+  /* walk the head back until it clears the target's plate: one fixed t buries
+     the arrowhead under the plate on the short arcs and maroons it mid-canvas
+     on the long ones */
+  let t = 0.98;
+  while (t > 0.5) {
+    const [x, y] = pt(t);
+    if (Math.abs(x - p1[0]) > 46 || Math.abs(y - p1[1]) > 19) break;
+    t -= 0.02;
+  }
+  const [hx, hy] = pt(t), [tx, ty] = tan(t);
+  const head = a.raids
+    ? '<path class="eg-barb' + (a.landed ? " is-landed" : "") + '" d="M-7.5 -4.6L0 0L-7.5 4.6"/>'
+    : '<path class="eg-tip eg-tip-' + kind + '" d="M0 0L-6.6 -3.4L-6.6 3.4Z"/>';
+
+  /* one tick across the line per broken promise, capped at three. The paper
+     halo goes down first or an oxblood tick vanishes into an oxblood arc. */
+  let cuts = "";
+  for (let i = 0; i < Math.min(a.broken, 3); i++) {
+    const ct = 0.40 + i * 0.09;
+    const [px, py] = pt(ct), [qx, qy] = tan(ct), m = Math.hypot(qx, qy) || 1;
+    const nx = (-qy / m) * 5.5, ny = (qx / m) * 5.5;
+    const seg = "M" + (px - nx).toFixed(1) + " " + (py - ny).toFixed(1) +
+      "L" + (px + nx).toFixed(1) + " " + (py + ny).toFixed(1);
+    cuts += '<path class="eg-cut-halo" d="' + seg + '"/><path class="eg-cut" d="' + seg + '"/>';
+  }
+
+  return '<g class="eg-edge"><title>' + esc(a.from + " to " + a.to + ": " + empireArcLine(a)) + "</title>" +
+    '<path class="eg-arc eg-' + kind + '" style="stroke-width:' + w + '" d="M' + p0[0] + " " + p0[1] +
+      "Q" + cx.toFixed(1) + " " + cy.toFixed(1) + " " + p1[0] + " " + p1[1] + '"/>' + cuts +
+    '<g transform="translate(' + hx.toFixed(1) + "," + hy.toFixed(1) + ") rotate(" +
+      (Math.atan2(ty, tx) * 180 / Math.PI).toFixed(1) + ')">' + head + "</g>" +
+  "</g>";
+}
+
+function empireArcLine(a) {
+  return [
+    a.moved ? money(a.moved) + " delivered" : null,
+    a.promised ? a.promised + " promise" + (a.promised === 1 ? "" : "s") : null,
+    a.broken ? a.broken + " broken" : null,
+    a.raids ? a.raids + " raid" + (a.raids === 1 ? "" : "s") + (a.landed ? ", " + a.landed + " landed" : ", none landed") : null,
+  ].filter(Boolean).join(" · ") || "nothing";
+}
+
+const EMP_KEY = '<div class="eg-key">' +
+  '<span><svg viewBox="0 0 30 12" aria-hidden="true"><path class="eg-arc eg-kept" style="stroke-width:4" d="M1 6H22"/><path class="eg-tip eg-tip-kept" d="M29 6L22 2.6L22 9.4Z"/></svg>value delivered</span>' +
+  '<span><svg viewBox="0 0 30 12" aria-hidden="true"><path class="eg-arc eg-talk" d="M1 6H22"/><path class="eg-tip eg-tip-talk" d="M29 6L22 2.6L22 9.4Z"/></svg>promised, nothing moved</span>' +
+  '<span><svg viewBox="0 0 30 12" aria-hidden="true"><path class="eg-arc eg-harm" style="stroke-width:2" d="M1 6H22"/><path class="eg-cut" d="M11 1L11 11"/><path class="eg-tip eg-tip-harm" d="M29 6L22 2.6L22 9.4Z"/></svg>a promise broken, one tick each</span>' +
+  '<span><svg viewBox="0 0 30 12" aria-hidden="true"><path class="eg-arc eg-harm" style="stroke-width:2" d="M1 6H21"/><path class="eg-barb is-landed" d="M21 1.4L28 6L21 10.6"/></svg>a raid, filled if it landed</span>' +
+"</div>";
+
+/* Five columns of tabular numerals do not fit a 343px strip however hard the
+   type is squeezed, and the body hides its own overflow, so the last column
+   just disappears. The holder scrolls when it has to and nowhere else. */
+function empireLedgerHtml(arcs) {
+  const rows = arcs.slice().sort((a, b) => (b.moved - a.moved) || (b.broken - a.broken) || (b.raids - a.raids));
+  return '<div class="eg-scroll"><table class="eg-ledger"><caption>The same links as figures</caption>' +
+    "<thead><tr><th scope=\"col\">From, to</th><th scope=\"col\">Delivered</th><th scope=\"col\">Promises</th>" +
+    "<th scope=\"col\">Broken</th><th scope=\"col\">Raids</th></tr></thead><tbody>" +
+    rows.map((a) => '<tr' + (a.broken ? ' class="is-broken"' : "") + '><th scope="row">' +
+      esc(a.from) + " → " + esc(a.to) + "</th>" +
+      "<td>" + (a.moved ? money(a.moved) : "0") + "</td><td>" + a.promised + "</td><td>" + a.broken + "</td>" +
+      /* "8 · 3 landed" on one nowrap line makes this the widest column in the
+         table by 40px and pushes the whole thing off a 343px strip, so the
+         second figure drops to a block underneath. It needs a space in front
+         of it even though the block swallows it visually: without one the
+         cell's text is "52 landed" to anything reading the DOM, and this
+         table IS the plate's text equivalent, so a screen reader was the one
+         audience getting the number wrong. */
+      "<td>" + a.raids + (a.landed ? " <small>of these, " + a.landed + " landed</small>" : "") + "</td></tr>").join("") +
+  "</tbody></table></div>";
+}
+
+function empireGraphHtml(d) {
+  const seats = ((d && d.opening) || []).map((p) => p.name);
+  if (seats.length !== 4) return "";
+  const net = {};
+  for (const r of d.standings || []) net[r.name] = r.net;
+  const arcs = empireArcs(d);
+  const top = Math.max(0, ...arcs.map((a) => a.moved));
+
+  const nodes = seats.map((n, i) => {
+    const [x, y] = EMP_POS[i];
+    /* the plate is painted last and filled with paper, so every arc ends
+       cleanly underneath it instead of stopping short of it */
+    return '<g class="eg-node"><rect x="' + (x - 42) + '" y="' + (y - 15) + '" width="84" height="30" rx="2"/>' +
+      '<text class="eg-name" x="' + x + '" y="' + (y - 2) + '">' + esc(n) + "</text>" +
+      (net[n] === undefined ? "" : '<text class="eg-net" x="' + x + '" y="' + (y + 11) + '">' + money(net[n]) + "</text>") +
+    "</g>";
+  }).join("");
+
+  const carried = arcs.filter((a) => a.moved).length;
+  const brokeOn = arcs.filter((a) => a.broken).length;
+  const raids = arcs.reduce((n, a) => n + a.raids, 0);
+  const summary = arcs.length
+    ? "Of the twelve one-way links between four seats, " + carried + " moved real value and " +
+      brokeOn + " carry a broken promise. " + raids + " raids on the record. The same figures follow as a table."
+    : "Four seats and nothing between them yet.";
+
+  return '<figure class="emp-graph">' +
+    '<figcaption class="eg-title">Who gave what to whom</figcaption>' +
+    '<svg class="eg-plate" viewBox="0 0 300 200" role="img" aria-label="' +
+      esc("Who gave what to whom. " + summary) + '">' +
+      arcs.map((a) => empireArcSvg(a, EMP_POS[seats.indexOf(a.from)], EMP_POS[seats.indexOf(a.to)], top)).join("") +
+      nodes +
+    "</svg>" +
+    (arcs.length ? EMP_KEY + empireLedgerHtml(arcs)
+      : '<p class="eg-none">Nobody has promised anybody anything yet.</p>') +
+  "</figure>";
 }
 
 function empireVerdictHtml(d) {

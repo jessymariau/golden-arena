@@ -1692,6 +1692,91 @@ a.chip:hover { border-color: var(--text-secondary); color: var(--text-primary); 
 }
 .emp-sub { display: block; font-size: var(--fs-xs); color: var(--text-tertiary); font-family: var(--font-body); }
 
+/* ── the relationship plate ────────────────────────────────────────────────
+   SPEC §7's primary visual, in the archive register: an engraved plate, not a
+   force-directed blob. Four seats always in the same four places. The one
+   semantic that must never slip is dashed vs solid — dashed is what was SAID,
+   solid is what actually MOVED — so nothing here may thicken a dashed line. */
+.emp-graph { margin: 0 0 var(--sp-5); }
+.eg-title {
+  margin-bottom: var(--sp-2);
+  font-family: var(--font-stamp); font-size: var(--fs-xs);
+  letter-spacing: var(--track-label); text-transform: uppercase; color: var(--text-tertiary);
+}
+.eg-plate {
+  display: block; width: 100%; height: auto;
+  max-width: 600px; margin: 0 auto var(--sp-2);
+}
+.eg-arc { fill: none; stroke-linecap: round; }
+.eg-talk { stroke: var(--text-tertiary); stroke-dasharray: 3 3.4; }
+.eg-kept { stroke: var(--sig-good); }
+.eg-harm { stroke: var(--sig-bad); }
+.eg-tip { stroke: none; }
+.eg-tip-talk { fill: var(--text-tertiary); }
+.eg-tip-kept { fill: var(--sig-good); }
+.eg-tip-harm { fill: var(--sig-bad); }
+.eg-barb {
+  fill: none; stroke: var(--sig-bad); stroke-width: 1.7;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.eg-barb.is-landed { fill: var(--sig-bad); }
+.eg-cut { stroke: var(--sig-bad); stroke-width: 1.8; stroke-linecap: butt; }
+.eg-cut-halo { stroke: var(--surface-page); stroke-width: 4.4; stroke-linecap: butt; }
+.eg-node rect { fill: var(--surface-page); stroke: var(--rule-strong); stroke-width: 1; }
+.eg-name {
+  text-anchor: middle; font-family: var(--font-stamp); font-size: 11px;
+  letter-spacing: .08em; fill: var(--text-primary);
+}
+.eg-net {
+  text-anchor: middle; font-family: var(--font-mono); font-size: 10px;
+  font-variant-numeric: tabular-nums; fill: var(--text-secondary);
+}
+
+.eg-key {
+  display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4);
+  margin-bottom: var(--sp-3);
+  font-size: var(--fs-xs); color: var(--text-secondary);
+}
+.eg-key span { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.eg-key svg { width: 30px; height: 12px; flex: none; }
+.eg-none { font-size: var(--fs-sm); color: var(--text-tertiary); text-align: center; }
+
+.eg-scroll { overflow-x: auto; }
+.eg-ledger { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.eg-ledger caption {
+  text-align: left; padding-bottom: var(--sp-1);
+  font-size: var(--fs-xs); letter-spacing: var(--track-label);
+  text-transform: uppercase; color: var(--text-tertiary);
+}
+.eg-ledger th, .eg-ledger td {
+  padding: var(--sp-1) var(--sp-2); border-top: 1px solid var(--rule);
+  text-align: right; white-space: nowrap;
+}
+.eg-ledger thead th {
+  border-top: 0; border-bottom: 1px solid var(--rule-strong);
+  font-family: var(--font-stamp); font-weight: 400; font-size: var(--fs-xs);
+  letter-spacing: var(--track-label); text-transform: uppercase; color: var(--text-tertiary);
+}
+.eg-ledger tbody th, .eg-ledger thead th:first-child {
+  text-align: left; padding-left: 0;
+}
+.eg-ledger tbody th { font-weight: 500; color: var(--text-primary); }
+.eg-ledger td { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.eg-ledger small {
+  display: block; font-family: var(--font-body);
+  font-size: var(--fs-xs); color: var(--text-tertiary);
+}
+.eg-ledger td:last-child { padding-right: 0; }
+.eg-ledger .is-broken th { color: var(--sig-bad); }
+
+@media (max-width: 480px) {
+  /* five nowrap columns of tabular numerals will not fit a 343px strip at body
+     size; tracked-out uppercase headers are what costs the most, so they go */
+  .eg-ledger { font-size: var(--fs-xs); }
+  .eg-ledger th, .eg-ledger td { padding: var(--sp-1); }
+  .eg-ledger thead th { letter-spacing: 0; }
+}
+
 /* a spectator reads the private channel; the players never do */
 /* Empire's talk is short and it is the point, so it does not live in a
    scrolling well: at transcript-mini's 320px the entire private channel sat
