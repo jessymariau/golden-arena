@@ -216,9 +216,12 @@ img { max-width: 100%; }
    fit them, and the links become a real 44px target on the way. */
 @media (max-width: 480px) {
   .nav-links { gap: 10px; }
-  .nav-link { letter-spacing: .02em; padding: var(--sp-3) 0; }
-  /* the checkboxes are a primary control in the gallery, not a decoration */
-  .check { min-height: 44px; }
+  /* 12px of padding landed the link on 43 — one pixel under the target, which
+     is not a rounding opinion, it either clears 44 or it does not */
+  .nav-link { letter-spacing: .02em; padding: 13px 0; }
+  /* primary controls in the gallery, not decoration */
+  .check, .seg-item { min-height: 44px; }
+  .seg-item { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; }
 }
 
 /* status chips — the one place a pill survives.
