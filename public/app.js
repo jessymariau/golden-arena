@@ -703,7 +703,7 @@ function empireHtml() {
     "<h3>Empire</h3>" +
     '<p class="rule-sub">You cannot win alone, and you cannot attack alone.</p>' +
     '<p class="rule-body">Twelve territories between four players, and nobody starts with enough. Land only ever changes hands when somebody agrees to hand it over, so the only road to winning runs through being trusted. And a raid needs a partner, which means telling someone your plan and finding out at the reveal whether they turned up.</p>' +
-    '<p class="not-dealt">Written, not yet dealt. The four above are the ones you can sit down at today.</p>' +
+    '<p class="not-dealt">Dealt, but not for you: Empire runs four models against each other and you watch, private channels and all. The four above are the ones you can sit down at yourself. <a href="#/watch?game=empire">Watch an empire</a></p>' +
     "<details class=\"empire-details\"><summary>The rules as written</summary><div class=\"empire-body\">" +
       "<h4>The board</h4>" +
       '<p class="rule-body"><b>Twelve territories, in four regions of three.</b> Everyone starts with three, and <b>nobody starts with a complete region.</b> Each territory pays you <b>10 coins a turn</b>. Hold all three of a region and it pays <b>90 a turn</b> instead of 30. Everyone starts with <b>50 coins</b>.</p>' +
@@ -1843,10 +1843,9 @@ async function renderWatch(params) {
   if (token !== viewToken) return;
 
   const g = params.get("game");
-  if (g && (cfg.games || []).some((x) => x.id === g)) watchState.game = g;
-  if (!(cfg.games || []).some((x) => x.id === watchState.game) && cfg.games && cfg.games.length) {
-    watchState.game = cfg.games[0].id;
-  }
+  const known = (id) => id === EMPIRE_ID || (cfg.games || []).some((x) => x.id === id);
+  if (g && known(g)) watchState.game = g;
+  if (!known(watchState.game) && cfg.games && cfg.games.length) watchState.game = cfg.games[0].id;
   if (!watchState.models) watchState.models = new Set((cfg.models || []).map((m) => m.id));
 
   $view.innerHTML =
@@ -1863,7 +1862,16 @@ function watchControlsHtml() {
   const ws = watchState;
   const cfg = CONFIG;
   const games = (cfg.games || []).map((g) =>
-    '<button type="button" class="seg-item' + (ws.game === g.id ? " on" : "") + '" role="radio" aria-checked="' + (ws.game === g.id) + '" data-action="watch-pick-game" data-id="' + esc(g.id) + '"><span class="seg-name">' + esc(g.name) + "</span></button>").join("");
+    '<button type="button" class="seg-item' + (ws.game === g.id ? " on" : "") + '" role="radio" aria-checked="' + (ws.game === g.id) + '" data-action="watch-pick-game" data-id="' + esc(g.id) + '"><span class="seg-name">' + esc(g.name) + "</span></button>").join("") +
+    '<button type="button" class="seg-item seg-long' + (ws.game === EMPIRE_ID ? " on" : "") + '" role="radio" aria-checked="' + (ws.game === EMPIRE_ID) + '" data-action="watch-pick-game" data-id="' + EMPIRE_ID + '"><span class="seg-name">Empire</span><span class="seg-sub">the long game</span></button>';
+  /* Empire seats four, has no rig and no pairings, so it takes the strip and
+     replaces everything under it rather than pretending to share the form. */
+  if (ws.game === EMPIRE_ID) {
+    return '<div class="watch-card">' +
+      '<h3 class="setup-label">The game</h3>' +
+      '<div class="seg seg-slim" role="radiogroup" aria-label="Tournament game">' + games + "</div>" +
+      empireControlsHtml() + "</div>";
+  }
   const checks = (cfg.models || []).map((m) =>
     '<label class="check"><input type="checkbox" data-model="' + esc(m.id) + '"' + (ws.models.has(m.id) ? " checked" : "") + " /><span>" + esc(m.label) + "</span></label>").join("");
   const powers = (cfg.powers || []).filter((p) => p.kind === "power");
@@ -1905,6 +1913,7 @@ function scheduleWatch(token, ms) {
 
 async function pollWatch(token) {
   if (token !== viewToken) return;
+  if (isEmpire()) return pollEmpire(token);
   try {
     const d = await api("/api/tournament");
     if (token !== viewToken) return;
@@ -2065,6 +2074,264 @@ async function resetTournament() {
     toast(err.error || "Couldn't reset the table.", "error");
   }
   pollWatch(viewToken);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   EMPIRE — the long game, watched
+   Four models, twelve turns, an economy. It lives inside the gallery rather
+   than in the nav because it is the same promise the gallery already makes:
+   machines only, you just watch. The difference is what you are allowed to
+   see — a spectator gets the PRIVATE channels too, which is the whole reason
+   the thing is worth watching and is what the Rules already tell a viewer.
+   ═══════════════════════════════════════════════════════════════════════ */
+const EMPIRE_ID = "empire";
+const EMPIRE_TURN_CHOICES = [6, 9, 12];
+const empireState = { data: null, turns: 12, busy: false, open: new Set(), seen: new Set(), auto: new Set(), follow: false };
+
+const isEmpire = () => watchState.game === EMPIRE_ID;
+
+/* seat name -> the model sitting in it, for a strip that reads
+   "Alpha · GPT-4o mini" rather than four anonymous letters */
+function empireSeats(d) {
+  const map = {};
+  for (const p of (d && d.opening) || []) map[p.name] = p;
+  return map;
+}
+
+function empireControlsHtml() {
+  const es = empireState;
+  const models = (CONFIG.models || []).slice(0, 4);
+  const seats = models.map((m, i) =>
+    '<span class="emp-seat"><b>' + esc(["Alpha", "Bravo", "Delta", "Echo"][i] || "?") + "</b>" + esc(m.label) + "</span>").join("");
+  const turns = EMPIRE_TURN_CHOICES.map((n) =>
+    '<button type="button" class="seg-item' + (es.turns === n ? " on" : "") + '" role="radio" aria-checked="' + (es.turns === n) + '" data-action="empire-turns" data-n="' + n + '"><span class="seg-name">' + n + " turns</span></button>").join("");
+  return '<h3 class="setup-label">The four seats <span class="setup-hint">Empire seats exactly four, and no two of them start the same</span></h3>' +
+    '<div class="emp-seats">' + seats + "</div>" +
+    '<h3 class="setup-label">The length</h3>' +
+    '<div class="seg seg-slim" role="radiogroup" aria-label="Turns">' + turns + "</div>" +
+    '<p class="margin-note">Land only ever moves by agreement, so the route to a region runs through somebody agreeing to hand you the piece you need. Watch who gets trusted, and what they do with it.</p>' +
+    '<div class="watch-actions">' +
+      '<button type="button" class="btn btn-primary btn-lg" data-action="empire-run"' + (es.busy ? " disabled" : "") + ">" + (es.busy ? "Dealing…" : "Run an empire") + "</button>" +
+      '<button type="button" class="btn btn-quiet" data-action="empire-reset">Reset</button>' +
+    "</div>";
+}
+
+async function pollEmpire(token) {
+  if (token !== viewToken) return;
+  try {
+    const d = await api("/api/empire");
+    if (token !== viewToken) return;
+    empireState.data = d;
+    renderEmpireLive();
+    scheduleWatch(token, d && d.running ? 1200 : 4000);
+  } catch (e) {
+    if (token !== viewToken) return;
+    if (!empireState.data) {
+      const live = document.getElementById("watch-live");
+      if (live) live.innerHTML = '<div class="empty">Can’t reach the table. Retrying…</div>';
+    }
+    scheduleWatch(token, 4000);
+  }
+}
+
+function renderEmpireLive() {
+  const live = document.getElementById("watch-live");
+  if (!live) return;
+  live.querySelectorAll("details[data-turn]").forEach((el) => {
+    if (el.open) empireState.open.add(el.dataset.turn);
+    else empireState.open.delete(el.dataset.turn);
+  });
+  /* the turn that just landed opens itself and closes when the next one does,
+     exactly as a match card does in the tournament feed */
+  for (const t of (empireState.data && empireState.data.log) || []) {
+    const id = String(t.n);
+    if (empireState.seen.has(id)) continue;
+    empireState.seen.add(id);
+    for (const prev of empireState.auto) empireState.open.delete(prev);
+    empireState.auto.clear();
+    empireState.open.add(id);
+    empireState.auto.add(id);
+  }
+  live.innerHTML = empireLiveHtml();
+}
+
+function empireLiveHtml() {
+  const d = empireState.data;
+  if (!d) return '<div class="empty">Reading the table…</div>';
+  if (!d.opening && !d.running) {
+    return '<div class="empty-state"><div class="empty-art">◆</div>' +
+      "<h3>No empire on the table</h3>" +
+      "<p>Twelve turns, four seats, one economy. Nobody starts with a complete region and nobody can take one by force.</p></div>";
+  }
+  let html = "";
+  if (d.error) html += '<p class="watch-error">House trouble: ' + esc(String(d.error)) + "</p>";
+  html += empireHonestyHtml(d) + empireStandingsHtml(d);
+
+  const done = (d.log || []).length;
+  html += '<div class="progress-line' + (d.running ? "" : " done") + '">' +
+    (d.running ? '<span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>Turn ' + Math.min(done + 1, d.turns) + " of " + d.turns
+      : done + " turn" + (done === 1 ? "" : "s") + " on the record" + (d.winner ? " · " + esc(d.winner.name) + " took it" : "")) +
+    "</div>";
+
+  if (!d.running && d.winner) html += empireVerdictHtml(d);
+  const seats = empireSeats(d);
+  html += '<div class="match-list">' + (d.log || []).slice().reverse().map((t) => empireTurnHtml(t, seats)).join("") + "</div>";
+  return html;
+}
+
+/* The label goes ON THE FACE. A run where every answer fell back to script is
+   a scripted run whatever the banner says — the arena has been bitten by that
+   exact silence twice now, once with a dead model roster and once with this
+   engine's own ask() swallowing three failure modes. */
+function empireHonestyHtml(d) {
+  const h = d.honesty;
+  if (!h) return "";
+  const bad = h.mode === "live" && h.scripted > 0;
+  const reasons = Object.entries(h.byReason || {}).map(([k, v]) => v + " " + k).join(" · ");
+  return '<p class="emp-honesty' + (bad ? " is-bad" : "") + '">' + esc(h.label) +
+    (h.asks ? ' <span class="emp-n">' + h.asks + " model calls" + (h.scripted ? ", " + h.scripted + " fell back" : "") + "</span>" : "") +
+    (bad && reasons ? ' <span class="emp-n">' + esc(reasons) + "</span>" : "") +
+    "</p>";
+}
+
+function empireStandingsHtml(d) {
+  const rows = d.standings || [];
+  if (!rows.length) return "";
+  const top = Math.max(1, ...rows.map((r) => r.net));
+  const seats = empireSeats(d);
+  return '<div class="emp-board">' + rows.map((r, i) => {
+    const p = seats[r.name] || {};
+    return '<div class="emp-row' + (i === 0 ? " emp-lead" : "") + '">' +
+      '<span class="emp-who"><b>' + esc(r.name) + "</b><span class=\"emp-model\">" + esc(p.label || p.id || "") + "</span></span>" +
+      '<span class="emp-bar" aria-hidden="true"><i style="--w:' + Math.round((r.net / top) * 100) + '%"></i></span>' +
+      '<span class="emp-net">' + money(r.net) + '<span class="emp-sub">' + r.land + " land · " + money(r.coins) + "</span></span>" +
+    "</div>";
+  }).join("") + "</div>";
+}
+
+function empireVerdictHtml(d) {
+  const b = d.breaches || [];
+  const counted = b.reduce((acc, x) => { acc[x.by] = (acc[x.by] || 0) + 1; return acc; }, {});
+  const worst = Object.entries(counted).sort((a, b2) => b2[1] - a[1])[0];
+  return '<div class="mini-receipt mini-receipt-flat emp-verdict">' +
+    '<div class="mr-top"><span class="stamp-badge stamp-neutral">EMPIRE</span></div>' +
+    '<p class="mr-head">' + esc(d.winner.name) + " ends it on " + money(d.winner.net) + ", holding " + d.winner.land + (d.winner.land === 1 ? " territory." : " territories.") + "</p>" +
+    '<p class="mr-detail">' + (b.length
+      ? b.length + " broken promise" + (b.length === 1 ? "" : "s") + " on the record" + (worst ? ", " + worst[1] + " of them " + esc(worst[0]) + "'s" : "") + "."
+      : "Not one promise was broken. Nobody had to be punished.") + "</p>" +
+    (b.length ? '<ul class="emp-breaches">' + b.slice(0, 8).map((x) =>
+      '<li><span class="emp-turn">T' + x.turn + "</span> <b>" + esc(x.by) + "</b> " + esc(x.label || x.code) + "</li>").join("") + "</ul>" : "") +
+  "</div>";
+}
+
+function empireTurnHtml(t, seats) {
+  const id = String(t.n);
+  const pub = (t.talk && t.talk.public) || [];
+  const priv = (t.talk && t.talk.private) || [];
+  const acts = t.actions || [];
+  const raids = (t.resolution && t.resolution.raids) || [];
+  const marks = t.newMarks || [];
+  const headline = empireTurnHeadline(t);
+
+  return '<details class="matchcard" data-turn="' + esc(id) + '"' + (empireState.open.has(id) ? " open" : "") + ">" +
+    '<summary><span class="mc-vs">Turn ' + t.n + "</span>" +
+    '<span class="mc-right">' + esc(headline) +
+      (marks.length ? '<span class="emp-mark">' + marks.length + " marked</span>" : "") + "</span></summary>" +
+    '<div class="mc-body">' +
+      /* Grouped by speaker, and NOT inside a scrolling box. Rendered as two
+         blocks — all the public lines, then all the private ones — the whole
+         private channel sat below a 320px scroll and never appeared on screen,
+         which is the one thing this view exists to show. Now each player's
+         table line is followed by what they said behind everyone's back. */
+      '<div class="transcript emp-talk">' +
+        pub.map((m) =>
+          '<div class="bubble bubble-a"><span class="bubble-who">' + esc(m.from) + "</span>" + esc(m.text) + "</div>" +
+          priv.filter((x) => x.from === m.from).map((x) =>
+            '<div class="bubble bubble-b bubble-private"><span class="bubble-who">' + esc(x.from) + " → " + esc(x.to) +
+            ' <span class="emp-priv">private</span></span>' + esc(x.text) + "</div>").join("")
+        ).join("") +
+        /* anything whose speaker never spoke publicly still gets heard */
+        priv.filter((x) => !pub.some((m) => m.from === x.from)).map((x) =>
+          '<div class="bubble bubble-b bubble-private"><span class="bubble-who">' + esc(x.from) + " → " + esc(x.to) +
+          ' <span class="emp-priv">private</span></span>' + esc(x.text) + "</div>").join("") +
+      "</div>" +
+      empireDealsHtml(t) +
+      '<div class="emp-reveal">' +
+        acts.map((a) => '<span class="emp-act emp-act-' + esc(String(a.action).toLowerCase()) + '"><b>' + esc(a.name) + "</b>" +
+          esc(a.action === "RAID" ? "raids " + a.target : a.action.toLowerCase()) + "</span>").join("") +
+      "</div>" +
+      (raids.length ? '<ul class="emp-raids">' + raids.map((r) =>
+        "<li>" + esc(r.raiders.join(" + ")) + " hit <b>" + esc(r.target) + "</b> — " +
+        (r.success ? (r.seizure ? "took " + esc(r.seizure.territory) : "landed") : "bounced off a fortification") + "</li>").join("") + "</ul>" : "") +
+      ((t.breaches || []).length ? '<ul class="emp-breaches">' + t.breaches.map((x) =>
+        '<li><b>' + esc(x.by) + "</b> " + esc(x.label || x.code) + "</li>").join("") + "</ul>" : "") +
+    "</div></details>";
+}
+
+function empireDealsHtml(t) {
+  const offers = (t.deals && t.deals.offers) || [];
+  const pledges = (t.deals && t.deals.pledges) || [];
+  if (!offers.length && !pledges.length) return "";
+  return '<ul class="emp-deals">' +
+    offers.map((o) => '<li><span class="emp-tag">' + esc(o.kind === "CONTRACT" ? "contract" : "handshake") + "</span>" +
+      esc(o.from) + " → " + esc(o.to) + ": " + esc(empireOfferLine(o)) + "</li>").join("") +
+    pledges.map((p) => '<li><span class="emp-tag emp-tag-pledge">pledge</span>' +
+      esc(p.from) + " → " + esc(p.to) + ": " + esc(
+        p.type === "JOINT_RAID" ? "we both raid " + p.target
+          : p.type === "FORTIFY" ? "I will fortify"
+          : "I hand over " + p.territory) + "</li>").join("") +
+  "</ul>";
+}
+
+function empireOfferLine(o) {
+  const gives = [o.giveCoins ? "$" + o.giveCoins : null, (o.giveLand || []).join("+") || null].filter(Boolean).join(" and ");
+  const wants = [o.wantCoins ? "$" + o.wantCoins : null, (o.wantLand || []).join("+") || null].filter(Boolean).join(" and ");
+  return (gives || "nothing") + " for " + (wants || "nothing");
+}
+
+/* One line that says what the turn WAS, so a collapsed row is still readable */
+function empireTurnHeadline(t) {
+  const raids = (t.resolution && t.resolution.raids) || [];
+  const seized = raids.find((r) => r.seizure);
+  if (seized) return seized.raiders.length + " took " + seized.seizure.territory + " off " + seized.target;
+  if (raids.length) return raids.map((r) => r.raiders.length + " on " + r.target).join(" · ");
+  if ((t.breaches || []).length) return t.breaches.length + " promise" + (t.breaches.length === 1 ? "" : "s") + " broken";
+  const moved = ((t.deals && t.deals.resolutions) || []).length;
+  if (moved) return moved + " deal" + (moved === 1 ? "" : "s") + " struck";
+  return "everyone builds";
+}
+
+async function runEmpireRun() {
+  const es = empireState;
+  if (es.busy || !CONFIG) return;
+  const models = (CONFIG.models || []).slice(0, 4);
+  if (models.length < 4) { toast("Empire needs four models on the roster."); return; }
+  es.busy = true;
+  renderWatchControls();
+  try {
+    await api("/api/empire", { body: { models: models.map((m) => ({ id: m.id })), turns: es.turns } });
+    es.open = new Set(); es.seen = new Set(); es.auto = new Set();
+    toast("The table is set.", "ok");
+    const floor = document.getElementById("watch-live");
+    if (floor) floor.scrollIntoView({ block: "start", behavior: REDUCED ? "auto" : "smooth" });
+  } catch (err) {
+    refusal(err, "Couldn't seat the empire.");
+  }
+  es.busy = false;
+  renderWatchControls();
+  pollEmpire(viewToken);
+}
+
+async function resetEmpire() {
+  try {
+    await api("/api/empire/reset", { method: "POST", body: {} });
+    empireState.data = null;
+    empireState.open = new Set(); empireState.seen = new Set(); empireState.auto = new Set();
+    toast("Table cleared.", "ok");
+  } catch (err) {
+    toast(err.error || "Couldn't clear the table.", "error");
+  }
+  pollEmpire(viewToken);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -2283,7 +2550,19 @@ document.addEventListener("click", (e) => {
     case "key-open": openKeyPanel(); break;
     case "key-close": closeKeyPanel(); break;
     case "key-forget": forgetKey(); break;
-    case "watch-pick-game": watchState.game = el.dataset.id; renderWatchControls(); break;
+    case "watch-pick-game": {
+      watchState.game = el.dataset.id;
+      renderWatchControls();
+      /* the two feeds are different shapes: repaint from the one now selected
+         rather than leaving the other's cards on screen */
+      const live = document.getElementById("watch-live");
+      if (live) live.innerHTML = '<div class="empty">Reading the floor…</div>';
+      pollWatch(viewToken);
+      break;
+    }
+    case "empire-turns": empireState.turns = Number(el.dataset.n) || 12; renderWatchControls(); break;
+    case "empire-run": runEmpireRun(); break;
+    case "empire-reset": resetEmpire(); break;
     case "watch-run": runTournament(); break;
     case "watch-reset": resetTournament(); break;
     case "reload-view": route(); break;

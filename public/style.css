@@ -1610,3 +1610,110 @@ a.chip:hover { border-color: var(--text-secondary); color: var(--text-primary); 
 .rule-entry + .rule-entry { margin-top: var(--sp-7); }
 .mb-n { font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .microbar-empty .mb-val { font-size: var(--fs-xs); letter-spacing: .04em; text-transform: none; }
+
+/* ══════════════════════════════════════════════════════════════════════
+   EMPIRE — the long game, watched
+   The gallery already had the chrome for a feed of cards, so this adds only
+   what Empire has that a two-seat match does not: a live net-worth board, a
+   private channel a spectator is allowed to read, and an honesty line that
+   states how many answers actually came from the models.
+   ══════════════════════════════════════════════════════════════════════ */
+.seg-long .seg-sub {
+  display: block;
+  font-size: var(--fs-xs); letter-spacing: var(--track-label);
+  text-transform: uppercase; color: var(--text-tertiary);
+}
+.emp-seats { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-bottom: var(--sp-4); }
+.emp-seat {
+  display: inline-flex; align-items: baseline; gap: var(--sp-2);
+  border: 1px solid var(--rule); border-radius: var(--r);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-sm); color: var(--text-secondary);
+}
+.emp-seat b {
+  font-family: var(--font-stamp); font-size: var(--fs-xs);
+  letter-spacing: var(--track-label); text-transform: uppercase; color: var(--text-primary);
+}
+
+/* The one line that says whether you are watching models or a script. Never
+   in a hover, never smaller than the thing it qualifies. */
+.emp-honesty {
+  margin: 0 0 var(--sp-3);
+  font-size: var(--fs-xs); letter-spacing: var(--track-label);
+  text-transform: uppercase; color: var(--text-tertiary);
+}
+.emp-honesty.is-bad { color: var(--sig-bad); }
+.emp-n { color: var(--text-tertiary); text-transform: none; letter-spacing: 0; }
+
+/* who is winning, answerable at a glance — SPEC's own test for this view */
+.emp-board { display: flex; flex-direction: column; margin-bottom: var(--sp-4); }
+.emp-row {
+  display: grid; grid-template-columns: minmax(7rem, 1fr) 2fr auto;
+  align-items: center; gap: var(--sp-3);
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--rule);
+}
+.emp-row:last-child { border-bottom: 0; }
+.emp-who { display: flex; flex-direction: column; min-width: 0; }
+.emp-who b {
+  font-family: var(--font-stamp); font-size: var(--fs-sm);
+  letter-spacing: var(--track-label); text-transform: uppercase;
+}
+.emp-model { font-size: var(--fs-xs); color: var(--text-tertiary); overflow-wrap: anywhere; }
+.emp-bar { display: block; height: 6px; background: var(--rule); border-radius: 999px; overflow: hidden; }
+.emp-bar i { display: block; height: 100%; width: var(--w, 0%); background: var(--text-secondary); transition: width 600ms var(--ease-out); }
+.emp-lead .emp-bar i { background: var(--text-primary); }
+.emp-net {
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  font-size: var(--fs-lg); text-align: right; line-height: 1.1;
+}
+.emp-sub { display: block; font-size: var(--fs-xs); color: var(--text-tertiary); font-family: var(--font-body); }
+
+/* a spectator reads the private channel; the players never do */
+/* Empire's talk is short and it is the point, so it does not live in a
+   scrolling well: at transcript-mini's 320px the entire private channel sat
+   below the fold of its own box and never once appeared on screen. */
+.emp-talk { max-height: none; overflow: visible; }
+.bubble-private { border-style: dashed; }
+.emp-priv {
+  font-family: var(--font-stamp); font-size: 9px;
+  letter-spacing: .1em; color: var(--sig-bad);
+}
+.emp-deals, .emp-raids, .emp-breaches {
+  list-style: none; margin: var(--sp-3) 0 0; padding: 0;
+  font-size: var(--fs-sm); color: var(--text-secondary);
+}
+.emp-deals li, .emp-raids li, .emp-breaches li { padding: var(--sp-1) 0; border-top: 1px solid var(--rule); }
+.emp-tag {
+  display: inline-block; margin-right: var(--sp-2);
+  font-family: var(--font-stamp); font-size: var(--fs-xs);
+  letter-spacing: var(--track-label); text-transform: uppercase; color: var(--text-tertiary);
+}
+.emp-tag-pledge { color: var(--sig-bad); }
+.emp-turn { font-family: var(--font-mono); color: var(--text-tertiary); }
+.emp-mark {
+  margin-left: var(--sp-3);
+  font-family: var(--font-stamp); font-size: var(--fs-xs);
+  letter-spacing: var(--track-label); text-transform: uppercase; color: var(--sig-bad);
+}
+
+/* the reveal: all four actions at once, which is the rule the game runs on */
+.emp-reveal { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-3); }
+.emp-act {
+  display: inline-flex; align-items: baseline; gap: var(--sp-2);
+  border: 1px solid var(--rule); border-radius: var(--r);
+  padding: var(--sp-1) var(--sp-3);
+  font-size: var(--fs-sm); color: var(--text-secondary);
+}
+.emp-act b {
+  font-family: var(--font-stamp); font-size: var(--fs-xs);
+  letter-spacing: var(--track-label); text-transform: uppercase; color: var(--text-primary);
+}
+.emp-act-raid { border-color: var(--sig-bad-rule); color: var(--sig-bad); }
+.emp-act-fortify { border-color: var(--rule-strong); }
+.emp-verdict { margin-bottom: var(--sp-4); }
+
+@media (max-width: 560px) {
+  .emp-row { grid-template-columns: 1fr auto; }
+  .emp-bar { grid-column: 1 / -1; order: 3; }
+}

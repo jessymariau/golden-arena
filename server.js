@@ -14,6 +14,12 @@ import { initStore, records, addRecord, storageMode } from "./lib/storage.js";
 import { computeBoard, receiptOf } from "./lib/bench.js";
 import { seedPlan } from "./lib/seedplan.js";
 import { headlineOf, shareMeta, sharePage, missingPage, MISSING_RECORD } from "./lib/share.js";
+import { runGame as runEmpire, DEALS as EMPIRE_DEALS } from "./lib/empire.js";
+
+// Short, stable in-game identities. The models' own names go in the UI beside
+// them: an agent has to write a seat name back for a message to be routed, and
+// "Claude Haiku 4.5" mistyped by one character is a message that vanishes.
+const EMPIRE_SEATS = ["Alpha", "Bravo", "Delta", "Echo"];
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3001;
@@ -388,6 +394,96 @@ function applyRig(players, rig) {
     for (const p of players) if (p.modelId === cap.modelId) p.powers.push(cap.handicap);
   }
 }
+
+// ---------------------------------------------------------------------------
+// EMPIRE — the long game, four seats, watched rather than played
+// ---------------------------------------------------------------------------
+// Not a match: no human seat, no 2-player machinery, and no Index. It is a
+// spectacle with a full omniscient record — private messages included, which
+// is the deal the Rules already state to a viewer. It streams turn by turn
+// because a game you can only read once it is over is a file, not a view.
+function emptyEmpire() {
+  return {
+    running: false, seed: null, turns: 0, deal: null,
+    opening: null, log: [], standings: [], honesty: null,
+    final: null, winner: null, breaches: [], error: null,
+  };
+}
+let empire = emptyEmpire();
+const lastEmpireAt = new Map();
+
+app.post("/api/empire", wrap(async (req, res) => {
+  if (empire.running) {
+    return res.status(409).json({
+      error: `An empire is already on the table, turn ${empire.log.length} of ${empire.turns}. Watch it finish, or clear it.`,
+      empire: { turns: empire.turns, done: empire.log.length },
+    });
+  }
+  const { models, seed, turns, deal } = req.body || {};
+  const roster = [];
+  for (const m of Array.isArray(models) ? models : []) {
+    const known = DEFAULT_MODELS.find((d) => d.id === m?.id);
+    if (!known) return res.status(400).json({ error: `unknown model: ${m?.id}` });
+    roster.push(known);
+  }
+  if (roster.length !== 4) return res.status(400).json({ error: "Empire seats exactly four. Pick four fighters." });
+
+  // 144 model calls on a live key is a real bill, so the house ceiling is
+  // higher here than for a tournament. A visitor on their own key is spending
+  // their own money and is never throttled.
+  const wait = cooledDown(req, lastEmpireAt);
+  if (wait) return refuse(res, wait, "One empire at a time while the house is paying — twelve turns is a hundred and forty model calls. Bring your own key and that ceiling lifts. Next one in");
+  if (housePays(req)) lastEmpireAt.set(ipOf(req), Date.now());
+
+  const nTurns = Math.max(3, Math.min(12, Number(turns) || 12));
+  const theSeed = Number.isFinite(Number(seed)) ? Number(seed) : Math.floor(Math.random() * 1e6);
+  const theDeal = EMPIRE_DEALS[deal] ? deal : "contested";
+
+  empire = { ...emptyEmpire(), running: true, seed: theSeed, turns: nTurns, deal: theDeal };
+  const state = empire;
+
+  // same contract as the tournament runner: the key lives in this closure and
+  // nowhere else, and the finally drops it however the run ends
+  let runKey = visitorKey(req);
+
+  (async () => {
+    try {
+      const result = await runEmpire({
+        players: roster.map((m, i) => ({ id: m.id, name: EMPIRE_SEATS[i], label: m.label })),
+        turns: nTurns,
+        seed: theSeed,
+        deal: theDeal,
+        apiKey: runKey,
+        cancelled: () => state !== empire,
+        onTurn: (ev) => {
+          if (state !== empire) return;
+          if (ev.kind === "opening") { state.opening = ev.opening; state.standings = ev.standings; }
+          else { state.log.push(ev.turn); state.standings = ev.turn.standings; }
+          state.honesty = ev.honesty;
+        },
+      });
+      if (state !== empire) return;
+      state.final = result.final;
+      state.winner = result.winner;
+      state.breaches = result.breaches;
+      state.honesty = result.honesty;
+    } catch (err) {
+      state.error = scrub(err.message);
+    } finally {
+      runKey = null;
+      state.running = false;
+    }
+  })();
+
+  res.json(empire);
+}));
+
+app.get("/api/empire", (req, res) => res.json(empire));
+
+app.post("/api/empire/reset", (req, res) => {
+  empire = emptyEmpire();
+  res.json({ ok: true });
+});
 
 app.post("/api/tournament", wrap(async (req, res) => {
   if (tournament.running) {

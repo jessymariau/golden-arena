@@ -10,7 +10,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { runGame, REGIONS } from "./empire.mjs";
+import { runGame, REGIONS } from "../lib/empire.js";
 import { liveMode } from "../lib/llm.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
