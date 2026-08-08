@@ -9,8 +9,10 @@
     "start": "node server.js",
     "check:models": "node scripts/check-models.mjs",
     "bake:seed": "node scripts/bake-seed.mjs",
+    "test": "node scripts/test-promise.mjs && node scripts/test-trust.mjs",
     "test:byok": "node scripts/test-byok.mjs",
-    "test:promise": "node scripts/test-promise.mjs"
+    "test:promise": "node scripts/test-promise.mjs",
+    "test:trust": "node scripts/test-trust.mjs"
   },
   "engines": {
     "node": ">=18"
