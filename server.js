@@ -602,11 +602,20 @@ async function loadBakedSeeds() {
 // Seeding follows the SERVER key, not "is anyone playing live". Our public
 // deployment carries no key — visitors bring their own — so it must still ship
 // a populated, clearly-labelled Index rather than an empty board.
+// Seeding does NOT follow the server key, and that is the whole point of this
+// comment. It used to: the reasoning was "our public deployment carries no key,
+// so it must still ship a populated Index". A server key was added on
+// 2026-08-08 and that one line silently emptied the board — autoscale
+// containers are ephemeral, so every cold start wiped `data/` and this early
+// return stopped anything refilling it. The deployed Index served
+// "No one on the record · 0 MATCHES ON THE RECORD" while the submission copy
+// sold the Behavioural Index as a headline feature. Nobody noticed, because
+// adding the key was verified by playing a live match rather than by looking
+// at the board it changed.
+//
+// The seeds are clearly labelled demo and the Index renders them as SCRIPTED,
+// so a populated board is not a dishonest one. Real matches accumulate on top.
 async function seedIfEmpty() {
-  if (hasServerKey()) {
-    console.log("Server key present: skipping demo seeding; the board fills with real matches.");
-    return;
-  }
   if (!records().some((r) => String(r.id).startsWith("seed"))) {
     const n = await loadBakedSeeds();
     if (n) {
