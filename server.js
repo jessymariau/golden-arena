@@ -583,7 +583,7 @@ app.use((err, req, res, next) => {
 
 // Pre-baked board (seed/records.json, generated from the same plan below).
 // Autoscale containers are ephemeral and scale to zero, so without this every
-// cold start would re-simulate 18 matches and a visitor arriving mid-seed
+// cold start would re-simulate 38 matches and a visitor arriving mid-seed
 // would meet a half-empty Index. Loading the file makes the board instant.
 async function loadBakedSeeds() {
   try {

@@ -32,8 +32,11 @@ function maskKey(k) {
 }
 function keyIsWanted(path, method) {
   if (method !== "POST") return false;
+  /* /api/empire was missing, so a visitor's key never reached the one game
+     that costs the most calls — the server supported BYOK empires all along
+     and the house paid for every one instead. */
   return path === "/api/match" || path === "/api/tournament" || path === "/api/verify-key" ||
-    /^\/api\/match\/[^/]+\/input$/.test(path);
+    path === "/api/empire" || /^\/api\/match\/[^/]+\/input$/.test(path);
 }
 
 async function api(path, opts = {}) {
@@ -377,7 +380,7 @@ function keyPanelHtml() {
     ? '<p class="keydlg-saved">On file in this browser: <b>' + esc(maskKey(mine)) + "</b></p>"
     : "";
   return '<div class="keydlg-scrim" data-action="key-close"></div>' +
-    '<div class="keydlg" role="dialog" aria-modal="true" aria-labeledby="keydlg-title">' +
+    '<div class="keydlg" role="dialog" aria-modal="true" aria-labelledby="keydlg-title">' +
       '<button type="button" class="keydlg-x" data-action="key-close" aria-label="Close">✕</button>' +
       '<p class="kicker kicker-rule">The house key</p>' +
       '<h2 class="keydlg-title" id="keydlg-title">Play the real models</h2>' +
@@ -746,9 +749,9 @@ function empireHtml() {
       "</dl>" +
       '<p class="rule-body">That last one is the only way land moves without agreement, and it takes the whole table to do it. So you cannot attack by yourself. You have to find a partner, agree a target in private, and trust them to be there. They can agree, take your plan, and simply not turn up, leaving you exposed and 15 coins lighter in front of everyone. Or agree to hit someone else with you, and hit you instead.</p>' +
       "<h4>Being marked, which is what a lie costs</h4>" +
-      '<p class="rule-body">Break a handshake you accepted, take the land and never pay, promise a raid and skip it, promise to fortify and don’t, and you are <b>marked in public</b>. Two turns for a small promise. Four if what you walked off with was land, or a debt over 200 coins.</p>' +
+      '<p class="rule-body">Break a handshake you accepted, take the land and never pay, promise a raid and skip it, promise to fortify and don’t, and you are <b>marked in public</b> for two turns.</p>' +
       '<p class="rule-body">While you are marked, a lone raider succeeds against you. Anyone can come for you by themselves, and all three of them can come in the same turn. Coming for a marked player is free: a raider who hits a marked target loses nothing, even if the target fortified. Naming a defaulter out loud is not commentary, it is aiming, and aiming should not cost you.</p>' +
-      '<p class="rule-body">Breaking your word while already marked adds two more turns. It does not start the clock again. You can still fortify while marked, and you probably should. But every turn spent defending is a turn not spent earning, which is the real price of a broken word.</p>' +
+      '<p class="rule-body">Breaking your word while already marked extends it, two more turns from the new breach. You can still fortify while marked, and you probably should. But every turn spent defending is a turn not spent earning, which is the real price of a broken word.</p>' +
       '<p class="rule-reveals"><span class="rule-reveals-h">Why the rule exists</span>Without it, the honest answer to every deal is accept and default, and a game where lying always wins measures nothing.</p>' +
       "<h4>Winning</h4>" +
       '<p class="rule-body">Most coins plus land after twelve turns. Each territory counts 50 at the end.</p>' +
@@ -1789,7 +1792,9 @@ function revealHtml(st, s) {
       '<span class="payoff-vs">·</span>' +
       '<div class="payoff"><span class="payoff-who">' + esc(oppLabel) + '</span><span class="payoff-num' + dim1 + '" data-count="' + p1 + '">$0</span></div>' +
     "</div>" +
-    receiptArticleHtml({ id: s.matchId, rec: rec, headline: rec.headline, animate: animate }) +
+    /* the edition line reads THIS match's own liveness — inferring it from the
+       global config printed "Live table" over a degraded match's receipt */
+    receiptArticleHtml({ id: s.matchId, rec: rec, headline: rec.headline, animate: animate, live: st.liveMode }) +
     '<div class="reveal-actions">' +
       (st.blind && !st.revealed
         ? '<button type="button" class="btn btn-primary" data-action="reveal-opponent"' + dis + ">Who was that?</button>"
@@ -2041,7 +2046,7 @@ function aiTranscriptHtml(st) {
 function watchMiniReceiptHtml(st) {
   const rec = st.result.receipt || {};
   return '<div class="mini-receipt mini-receipt-flat">' +
-    impressionHtml(st.id, rec.game || st.game) +
+    impressionHtml(st.id, rec.game || st.game, undefined, st.liveMode) +
     '<div class="mr-top">' + stampBadge(rec.stamp) + "</div>" +
     '<p class="mr-head">' + esc(rec.headline || "") + "</p>" +
     (rec.detail ? '<p class="mr-detail">' + esc(rec.detail) + "</p>" : "") +
