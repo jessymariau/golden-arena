@@ -2167,6 +2167,17 @@ async function pollEmpire(token) {
 function renderEmpireLive() {
   const live = document.getElementById("watch-live");
   if (!live) return;
+  /* The empire payload only changes when a turn lands (opening, turn, finish,
+     error) — the server assigns honesty per turn too. Repainting identical
+     data every 1.2s poll destroyed text selection and details focus for
+     anyone READING a 20-minute run. The signature lives on the DOM node so a
+     view swap (which replaces the innerHTML) naturally invalidates it. */
+  const d = empireState.data;
+  const sig = d
+    ? [(d.log || []).length, d.running, !!d.opening, !!d.winner, d.error || "", (d.honesty && d.honesty.asks) || 0].join(":")
+    : "nil";
+  if (live.dataset.sig === sig) return;
+  live.dataset.sig = sig;
   live.querySelectorAll("details[data-turn]").forEach((el) => {
     if (el.open) empireState.open.add(el.dataset.turn);
     else empireState.open.delete(el.dataset.turn);
@@ -2786,7 +2797,7 @@ document.addEventListener("click", (e) => {
       /* the two feeds are different shapes: repaint from the one now selected
          rather than leaving the other's cards on screen */
       const live = document.getElementById("watch-live");
-      if (live) live.innerHTML = '<div class="empty">Reading the floor…</div>';
+      if (live) { live.innerHTML = '<div class="empty">Reading the floor…</div>'; delete live.dataset.sig; }
       pollWatch(viewToken);
       break;
     }

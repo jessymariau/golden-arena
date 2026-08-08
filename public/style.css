@@ -555,9 +555,12 @@ button.chip:hover:not(:disabled) { border-color: var(--text-secondary); color: v
   padding: var(--sp-2) var(--sp-4) var(--sp-3);
   font-size: var(--fs-sm);
   line-height: 1.55;
-  animation: bubbleIn var(--t-page) linear both;
+  /* No base entrance animation. Every polling view rebuilds its DOM from
+     innerHTML, so an unconditional fade here replayed on EVERY bubble on
+     every 1.2s poll — a 20-minute Empire run pulsed once a second for its
+     whole length. Lines that ARRIVE animate via .is-arriving, which the
+     play transcript applies only to lines new since the last paint. */
 }
-@keyframes bubbleIn { from { opacity: 0; } to { opacity: 1; } }
 .bubble-who {
   display: block;
   font-size: var(--fs-xs);
