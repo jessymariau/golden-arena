@@ -1826,6 +1826,8 @@ const watchState = {
   data: null,
   timer: null,
   open: new Set(),
+  seen: new Set(),         /* match ids we have already decided about opening */
+  auto: new Set(),         /* ...and the ones WE opened, so we may close them */
   busy: false,
 };
 
@@ -1925,6 +1927,22 @@ function renderWatchLive() {
     if (el.open) watchState.open.add(el.dataset.id);
     else watchState.open.delete(el.dataset.id);
   });
+  /* The table being played opens itself and closes again when it settles, so
+     there is exactly one expanded card at a time and it is always the live one.
+     Six collapsed rows with the whole tournament happening inside them is a
+     spectator view with nothing to spectate; six EXPANDED ones are a wall.
+     Only cards we opened ourselves are ever closed for the reader — anything
+     they opened by hand stays open through every poll. */
+  for (const m of (watchState.data && watchState.data.matches) || []) {
+    if (!m) continue;
+    if (!watchState.seen.has(m.id)) {
+      watchState.seen.add(m.id);
+      if (!m.done) { watchState.open.add(m.id); watchState.auto.add(m.id); }
+    } else if (m.done && watchState.auto.has(m.id)) {
+      watchState.auto.delete(m.id);
+      watchState.open.delete(m.id);
+    }
+  }
   live.innerHTML = watchLiveHtml();
 }
 
@@ -2014,7 +2032,15 @@ async function runTournament() {
   try {
     await api("/api/tournament", { body: body });
     ws.open = new Set();
+    ws.seen = new Set();
+    ws.auto = new Set();
     toast("Tournament under way.", "ok");
+    /* Measured on this build at 1366x768: the controls card ends at 764 and the
+       first match lands at 804, so pressing the biggest button on the page
+       changed nothing a reader could see for eighteen seconds while a whole
+       tournament played below the fold. Take them to the floor. */
+    const floor = document.getElementById("watch-live");
+    if (floor) floor.scrollIntoView({ block: "start", behavior: REDUCED ? "auto" : "smooth" });
   } catch (err) {
     refusal(err, "Couldn't start the tournament.");
   }
@@ -2027,6 +2053,8 @@ async function resetTournament() {
   try {
     await api("/api/tournament/reset", { method: "POST", body: {} });
     watchState.open = new Set();
+    watchState.seen = new Set();
+    watchState.auto = new Set();
     watchState.data = null;
     toast("Table cleared.", "ok");
   } catch (err) {

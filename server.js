@@ -359,9 +359,24 @@ app.post("/api/match/:id/input", wrap(async (req, res) => {
 // tournaments — one at a time, run in a detached loop
 // ---------------------------------------------------------------------------
 function emptyTournament() {
-  return { running: false, game: null, progress: { done: 0, total: 0 }, matches: [], error: null };
+  return { running: false, game: null, progress: { done: 0, total: 0 }, matches: [], error: null, inPlay: null };
 }
 let tournament = emptyTournament();
+
+// `inPlay` is the RAW match currently at the table — it carries pendingDecisions
+// and an unmasked roster, so it is destructured off here and can never reach a
+// client. What goes out is its publicState, appended to the finished ones, which
+// is the whole point of a gallery: you watch the hand being played, not a
+// counter ticking while six of them happen somewhere off screen.
+// Newest first, live table at the top: the one card worth looking at then sits
+// in the same place for the whole run instead of marching down the page ahead
+// of the reader, and a match that finishes becomes the row directly beneath the
+// next one rather than jumping to the bottom.
+function tournamentView(t) {
+  const { inPlay, ...rest } = t;
+  const done = rest.matches.slice().reverse();
+  return { ...rest, matches: inPlay ? [publicState(inPlay)].concat(done) : done };
+}
 
 function applyRig(players, rig) {
   const adv = rig?.advantaged;
@@ -406,7 +421,7 @@ app.post("/api/tournament", wrap(async (req, res) => {
   for (let i = 0; i < roster.length; i++)
     for (let j = i + 1; j < roster.length; j++) pairs.push([roster[i], roster[j]]);
 
-  tournament = { running: true, game, progress: { done: 0, total: pairs.length }, matches: [], error: null };
+  tournament = { running: true, game, progress: { done: 0, total: pairs.length }, matches: [], error: null, inPlay: null };
   const state = tournament;
 
   // The one place a visitor's key outlives a request. It is held in this
@@ -427,10 +442,13 @@ app.post("/api/tournament", wrap(async (req, res) => {
           applyRig(players, rig);
           const match = createMatch({ game, players, live, apiKey: runKey });
           wireDossier(match);
+          state.inPlay = match;              // the table the room is watching
           await runToCompletion(match);
+          state.inPlay = null;
           state.matches.push(publicState(match));
           if (match.done && match.record) await addRecord(match.record);
         } catch (err) {
+          state.inPlay = null;
           state.error = scrub(err.message);
         }
         state.progress.done += 1;
@@ -441,11 +459,11 @@ app.post("/api/tournament", wrap(async (req, res) => {
     }
   })();
 
-  res.json(tournament);
+  res.json(tournamentView(tournament));
 }));
 
 app.get("/api/tournament", (req, res) => {
-  res.json(tournament);
+  res.json(tournamentView(tournament));
 });
 
 app.post("/api/tournament/reset", (req, res) => {

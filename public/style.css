@@ -780,6 +780,12 @@ button.chip:hover:not(:disabled) { border-color: var(--text-secondary); color: v
   margin-bottom: var(--sp-4);
 }
 .progress-line.done { color: var(--text-tertiary); }
+/* The floor holds its own space. Without it the page was 1062px tall at the
+   moment Run was pressed, so scrolling to the results could travel 294px of the
+   764 it needed and the table then rendered below where the scroll had stopped.
+   Reserving the height makes that one scroll land, and stops the results
+   shunting the page around underneath the reader as they arrive. */
+#watch-live { min-height: 68vh; }
 .match-list { display: flex; flex-direction: column; }
 .matchcard {
   border-bottom: 1px solid var(--rule);
