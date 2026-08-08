@@ -401,7 +401,7 @@ button.chip:hover:not(:disabled) { border-color: var(--text-secondary); color: v
 .checks { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 
 /* range slider — a printed rule with a travelling mark */
-.rangebox { padding: var(--sp-3) var(--sp-1) var(--sp-5); }
+.rangebox { padding: var(--sp-3) var(--sp-1) var(--sp-6); }
 .range-wrap { position: relative; }
 .range {
   -webkit-appearance: none; appearance: none;
@@ -431,10 +431,15 @@ button.chip:hover:not(:disabled) { border-color: var(--text-secondary); color: v
   background: var(--foil);
   pointer-events: none;
 }
+/* The thumb is 24px tall and centred on the track, so anything hung at the
+   track's midline lands UNDER it. Measured at the 50/50 default where every
+   reader starts: the "fair" label's top sat 8px inside the thumb and its
+   centre 2px from the thumb's, which cut the tops off the glyphs. 16px clears
+   the thumb's 12px reach with room to breathe. */
 .rtick-label {
   position: absolute; left: var(--at, 50%); top: 50%;
   transform: translateX(-50%);
-  margin-top: var(--sp-2);
+  margin-top: 16px;
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: .06em;
@@ -443,9 +448,10 @@ button.chip:hover:not(:disabled) { border-color: var(--text-secondary); color: v
   white-space: nowrap;
   pointer-events: none;
 }
+/* same thumb, same reach: at either end of the travel it sits on these */
 .rtick-end {
   position: absolute; top: 50%;
-  margin-top: var(--sp-2);
+  margin-top: 16px;
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: .06em;

@@ -559,6 +559,10 @@ function route() {
   viewToken++;
   clearTimeout(watchState.timer);
   clearTimeout(playState.refetchTimer);
+  /* A modal that outlives the page under it is not a modal. Open the key panel,
+     change route four times, and it was still sitting there over a view it had
+     nothing to do with — the one thing an otherwise correct dialog missed. */
+  closeKeyPanel();
   setNav(path);
   /* every view but a live match belongs to the archive */
   if (path !== "/play") setRegister(false);
