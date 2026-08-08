@@ -126,6 +126,8 @@ function publicState(match) {
     game: match.game,
     done: match.done,
     liveMode: match.live,
+    // set when a live table degraded to the script mid-game (house budget spent)
+    degraded: Boolean(match.degraded),
     blind: Boolean(match.blind),
     revealed: Boolean(match.revealed),
     players: match.players.map((p, i) => ({

@@ -1766,6 +1766,11 @@ function receiptArticleHtml(o) {
 /* — the reveal — */
 function revealHtml(st, s) {
   const r = st.result;
+  /* A table that stopped being live says so on the receipt rather than
+     printing "Live table" over decisions the mock made. */
+  const degraded = st.degraded
+    ? '<p class="emp-honesty is-bad">The house budget ran out part-way through this match, so some answers came from the script, not the models. It is filed as a demo table and left out of the Index accordingly.</p>'
+    : "";
   const rec = r.receipt || {};
   const cat = stampCategory(rec.stamp);
   const animate = !s.revealAnimated && !REDUCED;
@@ -1777,7 +1782,7 @@ function revealHtml(st, s) {
   const dim0 = p0 < p1 ? " dim" : "";
   const dim1 = p1 < p0 ? " dim" : "";
   const dis = s.inFlight ? " disabled" : "";
-  return '<section class="reveal">' +
+  return '<section class="reveal">' + degraded +
     (st.game === "prisoners" ? ledgerHtml(st, 0) : "") +
     '<div class="payoff-row">' +
       '<div class="payoff"><span class="payoff-who">You</span><span class="payoff-num' + dim0 + '" data-count="' + p0 + '">$0</span></div>' +
