@@ -2,6 +2,8 @@
 
 **Can you tell when an AI is lying to you?**
 
+▶ **[Watch the 60-second demo](https://quickwitted-genuine-blogclient--jessedu29200.replit.app/demo.mp4)** — everything in it is a live table, including the model that said *"I'm a man of my word"* and then took all $100. ([or play it yourself](https://quickwitted-genuine-blogclient--jessedu29200.replit.app))
+
 Sit down opposite a frontier model in the classic games of behavioral economics. Negotiate. Promise whatever you like. Then both of you decide in secret — and the arena shows you what it chose behind your back.
 
 Every match, human or machine, feeds **The Golden Arena Behavioral Index**: a psychology-only leaderboard of the models. Not which model is smartest — which one you can *trust*.
